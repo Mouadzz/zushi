@@ -26,6 +26,11 @@ fn sidecar_path(app: &AppHandle) -> PathBuf {
     let resource = app.path().resource_dir().expect("failed to get resource dir");
     let bin = resource.join("binaries").join(&name);
     if bin.exists() {
+        // Clear quarantine attribute so macOS doesn't block the binary
+        Command::new("xattr")
+            .args(["-cr", &bin.to_string_lossy()])
+            .output()
+            .ok();
         return bin;
     }
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -255,13 +260,19 @@ fn do_apply_skins_bg(
         }
     });
 
-    let _ = child.wait();
+    let exit_status = child.wait().map_err(|e| format!("Failed to wait for patcher: {}", e))?;
     let _ = stdout_thread.join();
     let _ = stderr_thread.join();
 
     if let Ok(mut s) = state.lock() {
         if s.patcher_gen == gen {
-            s.patcher_status = PatcherStatus::Idle;
+            if !exit_status.success() {
+                let code = exit_status.code().unwrap_or(-1);
+                eprintln!("[zushi] mod-tools runoverlay exited with code {}", code);
+                s.patcher_status = PatcherStatus::Error(format!("Patcher exited unexpectedly (code {})", code));
+            } else {
+                s.patcher_status = PatcherStatus::Idle;
+            }
             s.patcher_stdin = None;
         }
     }
