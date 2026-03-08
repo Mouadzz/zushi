@@ -39,7 +39,6 @@ fn sidecar_path(_app: &AppHandle) -> PathBuf {
 }
 
 fn run_mod_tools(binary: &PathBuf, args: &[String]) -> Result<String, String> {
-    eprintln!("[zushi] Running: {:?} {:?}", binary, args);
     let output = Command::new(binary)
         .args(args)
         .output()
@@ -49,8 +48,16 @@ fn run_mod_tools(binary: &PathBuf, args: &[String]) -> Result<String, String> {
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     if !output.status.success() {
-        let detail = if stderr.is_empty() { stdout.trim().to_string() } else { format!("{}\n{}", stdout.trim(), stderr.trim()) };
-        return Err(format!("mod-tools failed (exit {}): {}", output.status.code().unwrap_or(-1), detail));
+        let detail = if stderr.is_empty() {
+            stdout.trim().to_string()
+        } else {
+            format!("{}\n{}", stdout.trim(), stderr.trim())
+        };
+        return Err(format!(
+            "mod-tools failed (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            detail
+        ));
     }
 
     Ok(stdout)
@@ -100,8 +107,6 @@ fn start_apply(
     };
 
     let binary = sidecar_path(&app);
-    eprintln!("[zushi] mod-tools path: {:?}", binary);
-    eprintln!("[zushi] mod-tools exists: {}", binary.exists());
     if !binary.exists() {
         return Err(format!("mod-tools not found at {:?}", binary));
     }
@@ -115,10 +120,8 @@ fn start_apply(
 
     let base = work_dir(&app);
 
-    eprintln!("[zushi] Spawning patcher thread with {} skins, game: {}", zip_paths.len(), game_path);
     std::thread::spawn(move || {
         if let Err(e) = do_apply_skins_bg(binary, base, game_path, zip_paths, state.clone(), gen) {
-            eprintln!("[zushi] Patcher error: {}", e);
             if let Ok(mut s) = state.lock() {
                 if s.patcher_gen == gen {
                     s.patcher_status = PatcherStatus::Error(e);
@@ -264,7 +267,9 @@ fn do_apply_skins_bg(
         }
     });
 
-    let exit_status = child.wait().map_err(|e| format!("Failed to wait for patcher: {}", e))?;
+    let exit_status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for patcher: {}", e))?;
     let _ = stdout_thread.join();
     let _ = stderr_thread.join();
 
@@ -273,7 +278,8 @@ fn do_apply_skins_bg(
             if !exit_status.success() {
                 let code = exit_status.code().unwrap_or(-1);
                 eprintln!("[zushi] mod-tools runoverlay exited with code {}", code);
-                s.patcher_status = PatcherStatus::Error(format!("Patcher exited unexpectedly (code {})", code));
+                s.patcher_status =
+                    PatcherStatus::Error(format!("Patcher exited unexpectedly (code {})", code));
             } else {
                 s.patcher_status = PatcherStatus::Idle;
             }
@@ -316,7 +322,10 @@ pub fn get_work_dir_size(app: AppHandle) -> Result<u64, String> {
 }
 
 #[tauri::command]
-pub fn clear_work_dir(app: AppHandle, state: State<'_, Arc<Mutex<AppState>>>) -> Result<(), String> {
+pub fn clear_work_dir(
+    app: AppHandle,
+    state: State<'_, Arc<Mutex<AppState>>>,
+) -> Result<(), String> {
     {
         let s = state.lock().map_err(|e| e.to_string())?;
         if s.patcher_stdin.is_some() {
