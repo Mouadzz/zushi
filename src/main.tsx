@@ -13,4 +13,6 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   </React.StrictMode>
 );
 
-getCurrentWindow().show();
+const appWindow = getCurrentWindow();
+appWindow.show();
+appWindow.setFocus();

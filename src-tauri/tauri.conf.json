@@ -19,7 +19,8 @@
         "maximizable": false,
         "center": true,
         "decorations": true,
-        "visible": false
+        "visible": false,
+        "focus": true
       }
     ],
     "security": {
