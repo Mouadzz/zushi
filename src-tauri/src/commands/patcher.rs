@@ -26,11 +26,6 @@ fn sidecar_path(app: &AppHandle) -> PathBuf {
     let resource = app.path().resource_dir().expect("failed to get resource dir");
     let bin = resource.join("binaries").join(&name);
     if bin.exists() {
-        // Clear quarantine attribute so macOS doesn't block the binary
-        Command::new("xattr")
-            .args(["-cr", &bin.to_string_lossy()])
-            .output()
-            .ok();
         return bin;
     }
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -39,6 +34,7 @@ fn sidecar_path(app: &AppHandle) -> PathBuf {
 }
 
 fn run_mod_tools(binary: &PathBuf, args: &[String]) -> Result<String, String> {
+    eprintln!("[zushi] Running: {:?} {:?}", binary, args);
     let output = Command::new(binary)
         .args(args)
         .output()
@@ -99,6 +95,8 @@ fn start_apply(
     };
 
     let binary = sidecar_path(&app);
+    eprintln!("[zushi] mod-tools path: {:?}", binary);
+    eprintln!("[zushi] mod-tools exists: {}", binary.exists());
     if !binary.exists() {
         return Err(format!("mod-tools not found at {:?}", binary));
     }
@@ -112,6 +110,7 @@ fn start_apply(
 
     let base = work_dir(&app);
 
+    eprintln!("[zushi] Spawning patcher thread with {} skins, game: {}", zip_paths.len(), game_path);
     std::thread::spawn(move || {
         if let Err(e) = do_apply_skins_bg(binary, base, game_path, zip_paths, state.clone(), gen) {
             eprintln!("[zushi] Patcher error: {}", e);
