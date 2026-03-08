@@ -42,12 +42,11 @@
    - **Apple Silicon** (M1/M2/M3/M4/M5...) - `Zushi_x.x.x_aarch64.dmg`
    - **Intel** - `Zushi_x.x.x_x64.dmg`
 2. Open the `.dmg` and drag Zushi to your Applications folder
-3. On first launch, macOS may block the app. To fix this:
-   - Right-click the app → **Open** → click **Open** again, or
-   - Run this in Terminal to remove the quarantine flag:
-     ```
-     xattr -cr /Applications/Zushi.app
-     ```
+3. On first launch, macOS may show **"Zushi is damaged and can't be opened"** - this is normal for ad-hoc signed apps. To fix this, run in Terminal:
+   ```
+   xattr -cr /Applications/Zushi.app
+   ```
+   Then open the app again normally.
 
 ## Usage
 
