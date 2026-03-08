@@ -5,6 +5,10 @@
 <h1 align="center">Zushi</h1>
 
 <p align="center">
+  <a href="https://github.com/Mouadzz/zushi/releases/latest"><img src="https://img.shields.io/badge/download-latest-c89b3c?style=for-the-badge" alt="Download" /></a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS-black" alt="Platform" />
   <img src="https://img.shields.io/badge/tauri-2-24C8D8" alt="Tauri" />
@@ -31,6 +35,29 @@
 - Game auto-detection - finds your League installation automatically
 - Storage management - clear downloaded skins and patcher data
 - macOS native - Apple Silicon and Intel
+
+## Installation
+
+1. Download the latest `.dmg` for your Mac from the [Releases page](https://github.com/Mouadzz/zushi/releases/latest):
+   - **Apple Silicon** (M1/M2/M3/M4/M5...) - `Zushi_x.x.x_aarch64.dmg`
+   - **Intel** - `Zushi_x.x.x_x64.dmg`
+2. Open the `.dmg` and drag Zushi to your Applications folder
+3. On first launch, macOS may block the app. To fix this:
+   - Right-click the app → **Open** → click **Open** again, or
+   - Run this in Terminal to remove the quarantine flag:
+     ```
+     xattr -cr /Applications/Zushi.app
+     ```
+
+## Usage
+
+1. **Set game path** - On first launch, Zushi will automatically detect your League of Legends installation if it's in the default macOS location. If not, use the browse button to select it manually.
+2. **Browse skins** - Pick a champion from the grid, then browse through all available skins with splash art previews.
+3. **Download skins** - Download individual skins or batch download all skins for a champion.
+4. **Apply skins** - Go to **My Skins**, select the skins you want to apply (one per champion), and click the apply button.
+5. **Start your game** - Once the patcher shows "Waiting for game", you can then start your game.
+
+> **Important:** In champion select, you must pick the **default skin** for your champion. Otherwise, your already existing skins will override the ones you chose in Zushi.
 
 ## Roadmap
 
