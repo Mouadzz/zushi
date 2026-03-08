@@ -15,22 +15,27 @@ fn work_dir(app: &AppHandle) -> PathBuf {
     dir
 }
 
-fn sidecar_path(app: &AppHandle) -> PathBuf {
+fn sidecar_path(_app: &AppHandle) -> PathBuf {
     let triple = if cfg!(target_arch = "aarch64") {
         "aarch64-apple-darwin"
     } else {
         "x86_64-apple-darwin"
     };
-    let name = format!("mod-tools-{}", triple);
 
-    let resource = app.path().resource_dir().expect("failed to get resource dir");
-    let bin = resource.join("binaries").join(&name);
-    if bin.exists() {
-        return bin;
+    // Production: Tauri bundles the sidecar as "mod-tools" next to the app binary
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let bin = dir.join("mod-tools");
+            if bin.exists() {
+                return bin;
+            }
+        }
     }
+
+    // Dev: binary lives in src-tauri/binaries/ with the target triple suffix
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("binaries")
-        .join(&name)
+        .join(format!("mod-tools-{}", triple))
 }
 
 fn run_mod_tools(binary: &PathBuf, args: &[String]) -> Result<String, String> {
