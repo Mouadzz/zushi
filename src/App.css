@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "JungleAdventurer";
+  src: url("./assets/fonts/JungleAdventurer.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --color-charcoal-50: #3a3a42;
+  --color-charcoal-100: #2d2d35;
+  --color-charcoal-200: #252530;
+  --color-charcoal-300: #1e1e28;
+  --color-charcoal-400: #181820;
+  --color-charcoal-500: #121218;
+  --color-charcoal-600: #0a0a10;
+
+  --color-gold-100: #fdf0c4;
+  --color-gold-200: #f5d77a;
+  --color-gold-300: #e8c44a;
+  --color-gold-400: #c89b3c;
+  --color-gold-500: #a17a2e;
+  --color-gold-600: #7a5c22;
+
+  --color-ink: #e8e6e3;
+  --color-ink-secondary: #9e9e9e;
+  --color-ink-muted: #6b6b6b;
+
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-accent: #c89b3c;
+
+  --color-success: #2ecc71;
+  --color-error: #e74c3c;
+  --color-warning: #f39c12;
+
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-logo: "JungleAdventurer", system-ui, sans-serif;
+
+  --animate-shimmer: shimmer 2.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    background-position: -200% 0;
+    opacity: 0.6;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #181820;
+  color: #e8e6e3;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Thin scrollbar matching the dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}

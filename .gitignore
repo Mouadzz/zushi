@@ -1,0 +1,21 @@
+# Node
+node_modules/
+dist/
+
+# Tauri
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/
+
+# OS
+.DS_Store
+
+# Misc
+reference/
+venv/
+docs/
+cslol-tools/
+work/
+*.zip
+*.py
+.claude
