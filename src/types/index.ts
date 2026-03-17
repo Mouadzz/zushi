@@ -7,8 +7,8 @@ export type PatcherStatus =
   | "WaitingForGame"
   | "FoundGame"
   | "Scanning"
-  | "SkinActive"
-  | "WaitingForExit"
+  | "Patching"
+  | "InGame"
   | "GameExited"
   | { Error: string };
 

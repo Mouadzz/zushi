@@ -241,9 +241,9 @@ fn do_apply_skins_bg(
                     let new_status = match status_msg {
                         "Waiting for league match to start" => Some(PatcherStatus::WaitingForGame),
                         "Found League" => Some(PatcherStatus::FoundGame),
-                        "Scanning" | "Wait initialized" => Some(PatcherStatus::Scanning),
-                        "Patching" | "Saving" | "Wait patchable" => Some(PatcherStatus::SkinActive),
-                        "Waiting for exit" => Some(PatcherStatus::WaitingForExit),
+                        "Scanning" | "Wait initialized" | "Saving" | "Wait patchable" => Some(PatcherStatus::Scanning),
+                        "Patching" => Some(PatcherStatus::Patching),
+                        "Waiting for exit" => Some(PatcherStatus::InGame),
                         "League exited" => Some(PatcherStatus::GameExited),
                         _ => None,
                     };

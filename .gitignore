@@ -21,3 +21,4 @@ mod-tools/target/
 
 *.sh
 .claude
+*.todo

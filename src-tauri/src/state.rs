@@ -19,8 +19,8 @@ pub enum PatcherStatus {
     WaitingForGame,
     FoundGame,
     Scanning,
-    SkinActive,
-    WaitingForExit,
+    Patching,
+    InGame,
     GameExited,
     Error(String),
 }

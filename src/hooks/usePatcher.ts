@@ -2,12 +2,6 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { applySkins, stopPatcher as stopPatcherCmd, getPatcherStatus } from "../lib/commands";
 import type { PatcherStatus } from "../types";
 
-function statusLabel(s: PatcherStatus): string {
-  if (typeof s === "string") return s;
-  if ("Error" in s) return s.Error;
-  return "Unknown";
-}
-
 export function usePatcher() {
   const [status, setStatus] = useState<PatcherStatus>("Idle");
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +37,6 @@ export function usePatcher() {
       pollStatus();
       try {
         await applySkins(zipPaths);
-        setStatus("WaitingForGame");
       } catch (err) {
         setError(String(err));
         setStatus("Idle");
@@ -72,5 +65,5 @@ export function usePatcher() {
 
   const isActive = status !== "Idle" && !(typeof status === "object" && "Error" in status);
 
-  return { status, statusLabel: statusLabel(status), error, apply, stop, isActive };
+  return { status, error, apply, stop, isActive };
 }
