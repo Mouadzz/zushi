@@ -1,3 +1,5 @@
+import { useState, useEffect } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { Loader2 } from "lucide-react";
 import type { PatcherStatus } from "../types";
 
@@ -35,6 +37,10 @@ function getStatusInfo(s: PatcherStatus): { label: string; dotClass: string; spi
 }
 
 export default function StatusBar({ patcherStatus, downloading }: StatusBarProps) {
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    getVersion().then((v) => setVersion(v));
+  }, []);
   const { label, dotClass, spinner } = getStatusInfo(patcherStatus);
   const isActive =
     patcherStatus !== "Idle" && !(typeof patcherStatus === "object" && "Error" in patcherStatus);
@@ -66,7 +72,9 @@ export default function StatusBar({ patcherStatus, downloading }: StatusBarProps
       >
         {displayLabel}
       </span>
-      <span className="text-ink-muted ml-auto shrink-0 text-xs">Zushi v0.1.1</span>
+      <span className="text-ink-muted ml-auto shrink-0 text-xs">
+        {version ? `Zushi v${version}` : "Zushi"}
+      </span>
     </footer>
   );
 }

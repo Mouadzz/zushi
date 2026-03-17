@@ -13,6 +13,8 @@ import ChampionDetail from "./components/ChampionDetail";
 import MySkins from "./components/MySkins";
 import Settings from "./components/Settings";
 import Toast from "./components/Toast";
+import UpdateBanner from "./components/UpdateBanner";
+import { useVersionCheck } from "./hooks/useVersionCheck";
 import type { Champion } from "./types";
 import logo from "./assets/icon.png";
 
@@ -28,6 +30,7 @@ function App() {
   const { gamePath, detectedPath, status, selectPath, confirmSetup, checkPath } = useGamePath();
   const patcher = usePatcher();
   const dl = useDownloads();
+  const update = useVersionCheck();
   const [view, setView] = useState<View>("champions");
   const [selectedChampion, setSelectedChampion] = useState<Champion | null>(null);
   const [skinSelection, setSkinSelection] = useState<Record<string, string>>({});
@@ -128,6 +131,13 @@ function App() {
             );
           })}
         </nav>
+
+        {update.updateAvailable && update.latestVersion && (
+          <UpdateBanner
+            version={update.latestVersion}
+            releasesUrl={update.releasesUrl}
+          />
+        )}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
