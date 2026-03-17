@@ -33,8 +33,14 @@ function App() {
   const [skinSelection, setSkinSelection] = useState<Record<string, string>>({});
 
   // Show window once webview is ready (hidden at start to avoid white flash)
+  // Briefly set alwaysOnTop to force the window above other apps on macOS
   useEffect(() => {
-    getCurrentWebviewWindow().show();
+    const win = getCurrentWebviewWindow();
+    win.show();
+    win.setAlwaysOnTop(true).then(() => {
+      win.setFocus();
+      setTimeout(() => win.setAlwaysOnTop(false), 100);
+    });
   }, []);
 
   // Preload caches so MySkins images work without visiting Champions first

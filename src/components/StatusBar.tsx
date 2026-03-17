@@ -86,7 +86,7 @@ export default function StatusBar({ patcherStatus, downloading }: StatusBarProps
       >
         {displayLabel}
       </span>
-      <span className="text-ink-muted ml-auto shrink-0 text-xs">Zushi v0.1.0</span>
+      <span className="text-ink-muted ml-auto shrink-0 text-xs">Zushi v0.1.1</span>
     </footer>
   );
 }

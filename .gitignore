@@ -17,5 +17,7 @@ docs/
 
 # mod-tools build artifacts
 mod-tools/build*/
+mod-tools/target/
 
+*.sh
 .claude
