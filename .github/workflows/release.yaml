@@ -39,6 +39,15 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Build mod-tools
+        run: |
+          ARCH=${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x86_64' }}
+          cmake -S mod-tools -B mod-tools/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=$ARCH
+          cmake --build mod-tools/build -j$(sysctl -n hw.ncpu)
+          mkdir -p src-tauri/binaries
+          cp mod-tools/build/mod-tools src-tauri/binaries/mod-tools-${{ matrix.target }}
+          chmod +x src-tauri/binaries/mod-tools-${{ matrix.target }}
+
       - name: Install dependencies
         run: npm ci
 
@@ -54,10 +63,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zushi-${{ matrix.label }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
 
   release:
     needs: build

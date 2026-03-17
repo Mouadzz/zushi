@@ -236,6 +236,7 @@ fn do_apply_skins_bg(
         if let Some(out) = stdout {
             let reader = BufReader::new(out);
             for line in reader.lines().map_while(Result::ok) {
+                eprintln!("[zushi] mod-tools: {}", line);
                 if let Some(status_msg) = line.strip_prefix("Status: ") {
                     let new_status = match status_msg {
                         "Waiting for league match to start" => Some(PatcherStatus::WaitingForGame),
