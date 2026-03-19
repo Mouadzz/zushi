@@ -81,10 +81,10 @@ function App() {
     if (customs.error) setToastMessage(customs.error);
   }, [customs.error]);
 
-  const handleNavClick = (id: View) => {
+  function handleNavClick(id: View): void {
     setView(id);
     if (id !== "champions") setSelectedChampion(null);
-  };
+  }
 
   const handleApply = useCallback(() => {
     const skinPaths: string[] = [];
@@ -104,7 +104,7 @@ function App() {
 
   const skinCount = Object.keys(skinSelection).length;
 
-  const renderContent = () => {
+  function renderContent() {
     if (view === "settings") {
       return (
         <div className="flex-1 overflow-y-auto">
@@ -154,7 +154,7 @@ function App() {
     }
 
     return <ChampionGrid onSelect={setSelectedChampion} />;
-  };
+  }
 
   return (
     <div className="bg-charcoal-400 relative flex h-screen">

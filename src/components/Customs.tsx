@@ -16,6 +16,22 @@ export default function Customs({ customs, onAdd, onRemove, onToggle }: CustomsP
   const [adding, setAdding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const handleAdd = useCallback(
+    async (path: string) => {
+      const fileName = path.split("/").pop() ?? path;
+      setAdding(fileName);
+      setError(null);
+      try {
+        await onAdd(path);
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setAdding(null);
+      }
+    },
+    [onAdd]
+  );
+
   useEffect(() => {
     let unlisten: (() => void) | null = null;
 
@@ -43,25 +59,9 @@ export default function Customs({ customs, onAdd, onRemove, onToggle }: CustomsP
     return () => {
       unlisten?.();
     };
-  }, []);
+  }, [handleAdd]);
 
-  const handleAdd = useCallback(
-    async (path: string) => {
-      const fileName = path.split("/").pop() ?? path;
-      setAdding(fileName);
-      setError(null);
-      try {
-        await onAdd(path);
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setAdding(null);
-      }
-    },
-    [onAdd]
-  );
-
-  const handleBrowse = async () => {
+  async function handleBrowse() {
     const selected = await open({
       multiple: true,
       filters: [{ name: "Mod", extensions: ["zip", "fantome"] }],
@@ -69,7 +69,7 @@ export default function Customs({ customs, onAdd, onRemove, onToggle }: CustomsP
     if (!selected) return;
     const paths = Array.isArray(selected) ? selected : [selected];
     for (const p of paths) handleAdd(p);
-  };
+  }
 
   const activeCount = customs.filter((c) => c.enabled).length;
 

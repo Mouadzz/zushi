@@ -31,10 +31,15 @@ pub async fn import_custom(
         tauri::async_runtime::spawn_blocking(move || {
             let src = PathBuf::from(&src_path);
 
-            let ext = src.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
-            if ext != Some("zip".to_string()) && ext != Some("fantome".to_string()) {
-                return Err("File must be a .zip or .fantome".to_string());
-            }
+            let ext = src
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase());
+            let ext_str = match ext.as_deref() {
+                Some("zip") => "zip",
+                Some("fantome") => "fantome",
+                _ => return Err("File must be a .zip or .fantome".to_string()),
+            };
 
             if !src.exists() {
                 return Err("File not found".to_string());
@@ -52,7 +57,7 @@ pub async fn import_custom(
                 return Err("Invalid mod name".to_string());
             }
 
-            let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("zip");
+            let ext = ext_str;
             let dest = base.join(format!("{}.{}", safe_name, ext));
             fs::copy(&src, &dest).map_err(|e| format!("Failed to copy mod: {}", e))?;
 
@@ -79,9 +84,11 @@ pub async fn list_customs(app: AppHandle) -> Result<Vec<CustomEntry>, String> {
 
             for entry in entries.flatten() {
                 let path = entry.path();
-                let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
-                if ext == Some("zip".to_string()) || ext == Some("fantome".to_string())
-                {
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_lowercase());
+                if ext == Some("zip".to_string()) || ext == Some("fantome".to_string()) {
                     if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                         customs.push(CustomEntry {
                             name: stem.to_string(),
@@ -103,9 +110,12 @@ pub async fn remove_custom(app: AppHandle, name: String) -> Result<(), String> {
     let base = customs_dir(&app);
     flatten(
         tauri::async_runtime::spawn_blocking(move || {
-            let path = base.join(format!("{}.zip", name));
-            if path.exists() {
-                fs::remove_file(&path).map_err(|e| e.to_string())?;
+            for ext in &["zip", "fantome"] {
+                let path = base.join(format!("{}.{}", name, ext));
+                if path.exists() {
+                    fs::remove_file(&path).map_err(|e| e.to_string())?;
+                    return Ok(());
+                }
             }
             Ok(())
         })
@@ -116,7 +126,5 @@ pub async fn remove_custom(app: AppHandle, name: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn get_customs_dir_size(app: AppHandle) -> Result<u64, String> {
     let base = customs_dir(&app);
-    flatten(
-        tauri::async_runtime::spawn_blocking(move || Ok(super::dir_size(&base))).await,
-    )
+    flatten(tauri::async_runtime::spawn_blocking(move || Ok(super::dir_size(&base))).await)
 }
