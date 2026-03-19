@@ -33,3 +33,12 @@ export interface DownloadedSkin {
   skin_name: string;
   zip_path: string;
 }
+
+export interface CustomEntry {
+  name: string;
+  file_path: string;
+}
+
+export interface CustomMod extends CustomEntry {
+  enabled: boolean;
+}

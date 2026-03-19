@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layers, Play, Square, Check, Info } from "lucide-react";
+import { Layers, Check, Info } from "lucide-react";
 import { splashUrl, findChampionByName, championAvatar } from "../hooks/useChampions";
 import { lookupSplashNum } from "../hooks/useSkinData";
 import type { DownloadedSkin } from "../types";
@@ -8,8 +8,6 @@ type Selection = Record<string, string>;
 
 interface MySkinsProps {
   downloads: DownloadedSkin[];
-  onApply: (zipPaths: string[]) => void;
-  onStop: () => void;
   patcherActive: boolean;
   selection: Selection;
   onSelectionChange: (selection: Selection) => void;
@@ -71,8 +69,6 @@ function ChampAvatar({ championName }: { championName: string }) {
 
 export default function MySkins({
   downloads,
-  onApply,
-  onStop,
   patcherActive,
   selection,
   onSelectionChange,
@@ -90,22 +86,11 @@ export default function MySkins({
 
   const selectedCount = Object.keys(selection).length;
 
-  const handleApply = () => {
-    const paths: string[] = [];
-    for (const [championName, skinName] of Object.entries(selection)) {
-      const skin = downloads.find(
-        (d) => d.champion_name === championName && d.skin_name === skinName
-      );
-      if (skin) paths.push(skin.zip_path);
-    }
-    if (paths.length > 0) onApply(paths);
-  };
-
   if (downloads.length === 0) {
     return (
       <div className="flex h-full flex-col">
-        <div className="border-border flex shrink-0 items-center gap-3 border-b px-4 py-2.5">
-          <span className="text-ink-muted text-[11px] select-none">0 skins</span>
+        <div className="border-border flex shrink-0 items-center border-b px-4 py-3">
+          <span className="text-ink-muted text-sm select-none">0 skins</span>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
           <div className="bg-charcoal-300 flex h-12 w-12 items-center justify-center rounded-full">
@@ -135,43 +120,11 @@ export default function MySkins({
         <span className="text-ink-muted text-sm tabular-nums select-none">
           {downloads.length} {downloads.length === 1 ? "skin" : "skins"}
         </span>
-
-        <div className="ml-auto flex items-center gap-3">
-          {selectedCount > 0 && !patcherActive && (
-            <span className="text-gold-400 text-sm font-medium tabular-nums select-none">
-              {selectedCount} selected
-            </span>
-          )}
-
-          {patcherActive ? (
-            <button
-              onClick={onStop}
-              className="bg-error/10 text-error border-error/20 hover:bg-error/20 hover:border-error/40 flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border transition-all active:scale-95"
-              title="Stop patcher"
-            >
-              <Square size={14} strokeWidth={2.5} fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              onClick={handleApply}
-              disabled={selectedCount === 0}
-              className={[
-                "flex h-9 w-9 items-center justify-center rounded-lg",
-                "transition-all active:scale-95",
-                selectedCount > 0
-                  ? "bg-gold-400 text-charcoal-600 hover:bg-gold-300 shadow-gold-400/20 cursor-pointer shadow-md"
-                  : "bg-charcoal-300 text-ink-muted/40 pointer-events-none",
-              ].join(" ")}
-              title={
-                selectedCount > 0
-                  ? `Apply ${selectedCount} skin${selectedCount > 1 ? "s" : ""}`
-                  : "Select skins to apply"
-              }
-            >
-              <Play size={16} strokeWidth={2.5} fill="currentColor" />
-            </button>
-          )}
-        </div>
+        {selectedCount > 0 && (
+          <span className="text-gold-400 ml-auto text-sm font-medium tabular-nums select-none">
+            {selectedCount} selected
+          </span>
+        )}
       </div>
 
       <div className="bg-gold-400/8 border-gold-400/15 mx-4 mt-3 mb-1 flex items-start gap-2.5 rounded-lg border px-3 py-2.5">

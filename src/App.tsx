@@ -1,28 +1,32 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { Swords, Layers, Settings as SettingsIcon } from "lucide-react";
+import { getVersion } from "@tauri-apps/api/app";
+import { Swords, Layers, Package, Settings as SettingsIcon } from "lucide-react";
 import { useGamePath } from "./hooks/useGamePath";
 import { usePatcher } from "./hooks/usePatcher";
 import { useDownloads } from "./hooks/useDownloads";
+import { useCustoms } from "./hooks/useCustoms";
 import { ensureChampions } from "./hooks/useChampions";
 import { ensureSkinIds, ensureRepoZips } from "./hooks/useSkinData";
+import { useVersionCheck } from "./hooks/useVersionCheck";
 import StatusBar from "./components/StatusBar";
 import GamePathSelector from "./components/GamePathSelector";
 import ChampionGrid from "./components/ChampionGrid";
 import ChampionDetail from "./components/ChampionDetail";
 import MySkins from "./components/MySkins";
+import Customs from "./components/Customs";
 import Settings from "./components/Settings";
 import Toast from "./components/Toast";
 import UpdateBanner from "./components/UpdateBanner";
-import { useVersionCheck } from "./hooks/useVersionCheck";
 import type { Champion } from "./types";
 import logo from "./assets/icon.png";
 
-type View = "champions" | "my-skins" | "settings";
+type View = "champions" | "my-skins" | "customs" | "settings";
 
 const NAV_ITEMS: { id: View; label: string; icon: typeof Swords }[] = [
   { id: "champions", label: "Champions", icon: Swords },
   { id: "my-skins", label: "My Skins", icon: Layers },
+  { id: "customs", label: "Customs", icon: Package },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -30,13 +34,27 @@ function App() {
   const { gamePath, detectedPath, status, selectPath, confirmSetup, checkPath } = useGamePath();
   const patcher = usePatcher();
   const dl = useDownloads();
+  const customs = useCustoms();
   const update = useVersionCheck();
   const [view, setView] = useState<View>("champions");
   const [selectedChampion, setSelectedChampion] = useState<Champion | null>(null);
-  const [skinSelection, setSkinSelection] = useState<Record<string, string>>({});
+  const [skinSelection, setSkinSelection] = useState<Record<string, string>>(() => {
+    try {
+      const raw = localStorage.getItem("zushi_skin_selection");
+      if (raw) return JSON.parse(raw) as Record<string, string>;
+    } catch {}
+    return {};
+  });
+  const [appVersion, setAppVersion] = useState("");
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Show window once webview is ready (hidden at start to avoid white flash)
-  // Briefly set alwaysOnTop to force the window above other apps on macOS
+  useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => {});
+  }, []);
+
+  // Show window once webview is ready
   useEffect(() => {
     const win = getCurrentWebviewWindow();
     win.show();
@@ -46,17 +64,45 @@ function App() {
     });
   }, []);
 
-  // Preload caches so MySkins images work without visiting Champions first
+  // Preload caches
   useEffect(() => {
     ensureChampions().catch(() => {});
     ensureSkinIds().catch(() => {});
     ensureRepoZips().catch(() => {});
   }, []);
 
+  // Surface patcher errors as toast
+  useEffect(() => {
+    if (patcher.error) setToastMessage(patcher.error);
+  }, [patcher.error]);
+
+  // Surface customs errors as toast
+  useEffect(() => {
+    if (customs.error) setToastMessage(customs.error);
+  }, [customs.error]);
+
   const handleNavClick = (id: View) => {
     setView(id);
     if (id !== "champions") setSelectedChampion(null);
   };
+
+  const handleApply = useCallback(() => {
+    const skinPaths: string[] = [];
+    for (const [championName, skinName] of Object.entries(skinSelection)) {
+      const skin = dl.downloads.find(
+        (d) => d.champion_name === championName && d.skin_name === skinName
+      );
+      if (skin) skinPaths.push(skin.zip_path);
+    }
+    const allPaths = [...skinPaths, ...customs.enabledPaths];
+    if (allPaths.length > 0) patcher.apply(allPaths);
+  }, [skinSelection, dl.downloads, customs.enabledPaths, patcher]);
+
+  useEffect(() => {
+    localStorage.setItem("zushi_skin_selection", JSON.stringify(skinSelection));
+  }, [skinSelection]);
+
+  const skinCount = Object.keys(skinSelection).length;
 
   const renderContent = () => {
     if (view === "settings") {
@@ -72,12 +118,21 @@ function App() {
       );
     }
 
+    if (view === "customs") {
+      return (
+        <Customs
+          customs={customs.customs}
+          onAdd={customs.addCustom}
+          onRemove={customs.remove}
+          onToggle={customs.toggle}
+        />
+      );
+    }
+
     if (view === "my-skins") {
       return (
         <MySkins
           downloads={dl.downloads}
-          onApply={patcher.apply}
-          onStop={patcher.stop}
           patcherActive={patcher.isActive}
           selection={skinSelection}
           onSelectionChange={setSkinSelection}
@@ -132,21 +187,41 @@ function App() {
           })}
         </nav>
 
-        {update.updateAvailable && update.latestVersion && (
-          <UpdateBanner
-            version={update.latestVersion}
-            releasesUrl={update.releasesUrl}
-          />
-        )}
+        <div className="mt-auto">
+          {update.updateAvailable && update.latestVersion ? (
+            <UpdateBanner version={update.latestVersion} releasesUrl={update.releasesUrl} />
+          ) : (
+            <div className="px-4 pb-4 select-none">
+              <span className="text-ink-muted text-xs">{appVersion ? `v${appVersion}` : ""}</span>
+            </div>
+          )}
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex flex-1 flex-col overflow-hidden">{renderContent()}</main>
 
-        <StatusBar patcherStatus={patcher.status} downloading={dl.downloading} />
+        <StatusBar
+          patcherStatus={patcher.status}
+          downloading={dl.downloading}
+          skinCount={skinCount}
+          customCount={customs.enabledCount}
+          onApply={handleApply}
+          onStop={patcher.stop}
+        />
       </div>
 
-      {dl.error && <Toast message={dl.error} onClose={dl.clearError} />}
+      {(toastMessage || dl.error) && (
+        <Toast
+          key={toastMessage ?? dl.error ?? ""}
+          message={toastMessage ?? dl.error ?? ""}
+          onClose={() => {
+            setToastMessage(null);
+            dl.clearError();
+            customs.clearError();
+          }}
+        />
+      )}
 
       {status !== "game-detected" && (
         <div className="bg-charcoal-400 absolute inset-0 z-50">

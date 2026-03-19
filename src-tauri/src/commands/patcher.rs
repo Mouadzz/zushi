@@ -187,10 +187,15 @@ fn do_apply_skins_bg(
         overlay_dir.to_string_lossy().to_string(),
         format!("--game:{}", game_path),
         mods_arg,
-        "--ignoreConflict".into(),
     ];
 
-    run_mod_tools(&binary, &mkoverlay_args)?;
+    run_mod_tools(&binary, &mkoverlay_args).map_err(|e| {
+        if e.to_lowercase().contains("conflict") {
+            "You can't apply two skins to the same champion at once. Deselect one and try again.".to_string()
+        } else {
+            e
+        }
+    })?;
 
     // Step 3: Run patcher
     {

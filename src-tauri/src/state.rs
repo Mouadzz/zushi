@@ -41,6 +41,12 @@ pub struct DownloadedSkin {
     pub zip_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomEntry {
+    pub name: String,
+    pub file_path: String,
+}
+
 impl std::fmt::Debug for AppState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppState")
