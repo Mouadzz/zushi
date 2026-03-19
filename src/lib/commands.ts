@@ -70,3 +70,19 @@ export async function getWorkDirSize(): Promise<number> {
 export async function clearWorkDir(): Promise<void> {
   return invoke("clear_work_dir");
 }
+
+export async function importCustom(srcPath: string, name: string): Promise<{ name: string; file_path: string }> {
+  return invoke("import_custom", { srcPath, name });
+}
+
+export async function listCustoms(): Promise<{ name: string; file_path: string }[]> {
+  return invoke("list_customs");
+}
+
+export async function removeCustom(name: string): Promise<void> {
+  return invoke("remove_custom", { name });
+}
+
+export async function getCustomsDirSize(): Promise<number> {
+  return invoke("get_customs_dir_size");
+}

@@ -187,10 +187,15 @@ fn do_apply_skins_bg(
         overlay_dir.to_string_lossy().to_string(),
         format!("--game:{}", game_path),
         mods_arg,
-        "--ignoreConflict".into(),
     ];
 
-    run_mod_tools(&binary, &mkoverlay_args)?;
+    run_mod_tools(&binary, &mkoverlay_args).map_err(|e| {
+        if e.to_lowercase().contains("conflict") {
+            "You can't apply two skins to the same champion at once. Deselect one and try again.".to_string()
+        } else {
+            e
+        }
+    })?;
 
     // Step 3: Run patcher
     {
@@ -236,13 +241,14 @@ fn do_apply_skins_bg(
         if let Some(out) = stdout {
             let reader = BufReader::new(out);
             for line in reader.lines().map_while(Result::ok) {
+                eprintln!("[zushi] mod-tools: {}", line);
                 if let Some(status_msg) = line.strip_prefix("Status: ") {
                     let new_status = match status_msg {
                         "Waiting for league match to start" => Some(PatcherStatus::WaitingForGame),
                         "Found League" => Some(PatcherStatus::FoundGame),
-                        "Scanning" | "Wait initialized" => Some(PatcherStatus::Scanning),
-                        "Patching" | "Saving" | "Wait patchable" => Some(PatcherStatus::SkinActive),
-                        "Waiting for exit" => Some(PatcherStatus::WaitingForExit),
+                        "Scanning" | "Wait initialized" | "Saving" | "Wait patchable" => Some(PatcherStatus::Scanning),
+                        "Patching" => Some(PatcherStatus::Patching),
+                        "Waiting for exit" => Some(PatcherStatus::InGame),
                         "League exited" => Some(PatcherStatus::GameExited),
                         _ => None,
                     };
@@ -339,20 +345,4 @@ pub fn clear_work_dir(
     Ok(())
 }
 
-fn dir_size(path: &std::path::Path) -> u64 {
-    let mut total = 0u64;
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let ft = match entry.file_type() {
-                Ok(ft) => ft,
-                Err(_) => continue,
-            };
-            if ft.is_file() {
-                total += entry.metadata().map(|m| m.len()).unwrap_or(0);
-            } else if ft.is_dir() {
-                total += dir_size(&entry.path());
-            }
-        }
-    }
-    total
-}
+use super::dir_size;

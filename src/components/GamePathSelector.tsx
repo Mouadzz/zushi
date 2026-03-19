@@ -161,13 +161,12 @@ export default function GamePathSelector({
                 : "border-gold-400 text-gold-400 hover:bg-gold-400/10 w-full border py-2.5",
             ].join(" ")}
           >
-            {loading && !(displayPath && pathValid === true)
-              ? "Validating..."
-              : displayPath && pathValid === true
-                ? "Wrong path? Change it"
-                : pathValid === false
-                  ? "Select another path"
-                  : "Browse..."}
+            {(() => {
+              if (loading && !(displayPath && pathValid === true)) return "Validating...";
+              if (displayPath && pathValid === true) return "Wrong path? Change it";
+              if (pathValid === false) return "Select another path";
+              return "Browse...";
+            })()}
           </button>
         </div>
       </div>

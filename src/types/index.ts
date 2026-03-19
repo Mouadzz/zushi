@@ -7,8 +7,8 @@ export type PatcherStatus =
   | "WaitingForGame"
   | "FoundGame"
   | "Scanning"
-  | "SkinActive"
-  | "WaitingForExit"
+  | "Patching"
+  | "InGame"
   | "GameExited"
   | { Error: string };
 
@@ -32,4 +32,13 @@ export interface DownloadedSkin {
   champion_name: string;
   skin_name: string;
   zip_path: string;
+}
+
+export interface CustomEntry {
+  name: string;
+  file_path: string;
+}
+
+export interface CustomMod extends CustomEntry {
+  enabled: boolean;
 }

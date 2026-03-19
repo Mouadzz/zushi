@@ -5,6 +5,7 @@ dist/
 # Tauri
 src-tauri/target/
 src-tauri/gen/
+src-tauri/binaries/
 
 # OS
 .DS_Store
@@ -13,8 +14,11 @@ src-tauri/gen/
 reference/
 venv/
 docs/
-cslol-tools/
-work/
-*.zip
-*.py
+
+# mod-tools build artifacts
+mod-tools/build*/
+mod-tools/target/
+
+*.sh
 .claude
+*.todo

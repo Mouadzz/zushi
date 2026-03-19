@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { getCached, setCache } from "../lib/cache";
 import type { Champion } from "../types";
+import { getCached, setCache } from "../lib/cache";
 
 const DDRAGON_VERSION = "15.4.1";
 export const DDRAGON_BASE = `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}`;
@@ -60,32 +60,8 @@ export function useChampions() {
   useEffect(() => {
     if (championsCache) return;
 
-    const cached = getCached<Champion[]>(CACHE_KEY);
-    if (cached) {
-      championsCache = cached;
-      setChampions(cached);
-      setLoading(false);
-      return;
-    }
-
-    fetch(`${DDRAGON_BASE}/data/en_US/champion.json`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((json) => {
-        const list: Champion[] = Object.values(json.data).map((c: any) => ({
-          id: c.id,
-          key: c.key,
-          name: c.name,
-          title: c.title,
-          tags: c.tags,
-        }));
-        list.sort((a, b) => a.name.localeCompare(b.name));
-        championsCache = list;
-        setCache(CACHE_KEY, list);
-        setChampions(list);
-      })
+    ensureChampions()
+      .then((list) => setChampions(list))
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
   }, []);

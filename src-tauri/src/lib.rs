@@ -237,6 +237,10 @@ pub fn run() {
             commands::skins::delete_downloaded_skin,
             commands::skins::get_skins_dir_size,
             commands::skins::clear_all_skins,
+            commands::customs::import_custom,
+            commands::customs::list_customs,
+            commands::customs::remove_custom,
+            commands::customs::get_customs_dir_size,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

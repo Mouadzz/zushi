@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/platform-macOS-black" alt="Platform" />
   <img src="https://img.shields.io/badge/tauri-2-24C8D8" alt="Tauri" />
   <img src="https://img.shields.io/badge/react-19-61DAFB" alt="React" />
-  <img src="https://img.shields.io/badge/version-0.1.0-c89b3c" alt="Version" />
+  <img src="https://img.shields.io/badge/version-0.1.1-c89b3c" alt="Version" />
 </p>
 
 <p align="center">
@@ -62,6 +62,10 @@
 
 - Upload and apply your own custom skins
 - System tray icon to keep the app running in the background
+
+## Analytics
+
+Zushi collects anonymous usage data (app launches, active users) via [Umami](https://umami.is). No personal data, file paths, or identifiable information is ever collected.
 
 ## Disclaimer
 
