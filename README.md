@@ -58,15 +58,6 @@
 
 > **Important:** In champion select, you must pick the **default skin** for your champion. Otherwise, your already existing skins will override the ones you chose in Zushi.
 
-## Roadmap
-
-- Upload and apply your own custom skins
-- System tray icon to keep the app running in the background
-
-## Analytics
-
-Zushi collects anonymous usage data (app launches, active users) via [Umami](https://umami.is). No personal data, file paths, or identifiable information is ever collected.
-
 ## Disclaimer
 
 Zushi is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games and all associated properties are trademarks or registered trademarks of Riot Games, Inc.
