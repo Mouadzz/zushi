@@ -31,6 +31,7 @@
 - Browse all champions and their skins with splash art previews
 - Download individual skins or batch download all skins for a champion
 - Select and apply multiple skins at once - one per champion
+- Import custom mods (.fantome/.zip)
 - Real-time patcher status (importing, waiting for game, skins active, etc.)
 - Game auto-detection - finds your League installation automatically
 - Storage management - clear downloaded skins and patcher data
