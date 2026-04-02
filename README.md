@@ -51,13 +51,12 @@
 
 ## Usage
 
-1. **Set game path** - On first launch, Zushi will automatically detect your League of Legends installation if it's in the default macOS location. If not, use the browse button to select it manually.
-2. **Browse skins** - Pick a champion from the grid, then browse through all available skins with splash art previews.
-3. **Download skins** - Download individual skins or batch download all skins for a champion.
-4. **Apply skins** - Go to **My Skins**, select the skins you want to apply (one per champion), and click the apply button.
-5. **Start your game** - Once the patcher shows "Waiting for game", you can then start your game.
+1. **Start League client** - Open the Riot/League client first and leave it running.
+2. **Run Zushi** - Open Zushi once the client is up.
+3. **Download & apply skins** - Pick a champion, download skins if needed, then go to **My Skins**, select one skin per champion, and click **Apply**.
+4. **Start your game** - With the patcher showing **Waiting for game**, queue up and play.
 
-> **Important:** In champion select, you must pick the **default skin** for your champion. Otherwise, your already existing skins will override the ones you chose in Zushi.
+> **Important:** Apply the skin before champion select ends (use the default skin in client) so it is locked in when the game starts. If it does not apply, close the game, reopen League, run Zushi again, apply, and reconnect.
 
 ## Disclaimer
 
