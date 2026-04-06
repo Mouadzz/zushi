@@ -258,11 +258,19 @@ auto patcher::run(std::function<void(Message, char const*)> update,
     (void)config_path;
     (void)game_path;
     (void)opts;
+    std::uint32_t last_patched_pid = 0;
     for (;;) {
         auto pid = Process::FindPid("/LeagueofLegends");
         if (!pid) {
+            last_patched_pid = 0;
             update(M_WAIT_START, "");
             sleep_ms(10);
+            continue;
+        }
+
+        // Skip if we already patched this exact PID (process still winding down)
+        if (pid == last_patched_pid) {
+            sleep_ms(100);
             continue;
         }
 
@@ -271,6 +279,28 @@ auto patcher::run(std::function<void(Message, char const*)> update,
 
         update(M_SCAN, "");
         ctx.scan(process);
+
+        // Check if this process was already patched (e.g. by a previous patcher
+        // instance). Read the first 8 bytes at wad_verify - if they match our
+        // "return true" shellcode, skip straight to waiting for exit.
+        {
+            auto const ptr_wad_verify = process.Rebase(ctx.off_wad_verify);
+            unsigned char probe[8] = {};
+            Payload_wad_verify expected{};
+            if (process.TryReadMemory((void*)(uintptr_t)ptr_wad_verify, probe, sizeof(probe))
+                && std::memcmp(probe, expected.return_true, sizeof(probe)) == 0) {
+                // Already patched — just wait for this game to exit
+                last_patched_pid = pid;
+                update(M_WAIT_EXIT, "");
+                run_until_or(
+                    3h,
+                    Intervals{5s, 10s, 15s},
+                    [&] { return process.IsExited(); },
+                    []() -> bool { throw PatcherTimeout(std::string("Timed out exit")); });
+                update(M_DONE, "");
+                continue;
+            }
+        }
 
         update(M_PATCH, "");
 
@@ -300,6 +330,7 @@ auto patcher::run(std::function<void(Message, char const*)> update,
             }
         }
 
+        last_patched_pid = pid;
         update(M_WAIT_EXIT, "");
         run_until_or(
             3h,

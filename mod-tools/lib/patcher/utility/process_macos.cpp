@@ -151,6 +151,7 @@ auto Process::TryReadMemory(void* address, void* dest, size_t size) const noexce
         return false;
     }
     memcpy(dest, (void*)offset, orgdata_read);
+    mach_vm_deallocate(mach_task_self(), offset, orgdata_read);
     return true;
 }
 
@@ -165,6 +166,7 @@ auto Process::ReadMemory(void* address, void* dest, size_t size) const -> void {
         lol_throw_msg("mach_vm_read: got {:#x}", got_size);
     }
     memcpy(dest, (void*)offset, got_size);
+    mach_vm_deallocate(mach_task_self(), offset, got_size);
 }
 
 auto Process::WriteMemory(void* address, void const* src, std::size_t sizeBytes) const -> void {
