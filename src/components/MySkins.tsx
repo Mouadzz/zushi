@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layers, Check, Info } from "lucide-react";
+import { Layers, Check, Info, X } from "lucide-react";
 import { splashUrl, findChampionByName, championAvatar } from "../hooks/useChampions";
 import { lookupSplashNum } from "../hooks/useSkinData";
 import type { DownloadedSkin } from "../types";
@@ -11,6 +11,7 @@ interface MySkinsProps {
   patcherActive: boolean;
   selection: Selection;
   onSelectionChange: (selection: Selection) => void;
+  onDelete: (championName: string, skinName: string) => Promise<void>;
 }
 
 function SkinThumb({ championName, skinName }: { championName: string; skinName: string }) {
@@ -72,6 +73,7 @@ export default function MySkins({
   patcherActive,
   selection,
   onSelectionChange,
+  onDelete,
 }: MySkinsProps) {
   const toggleSkin = (championName: string, skinName: string) => {
     if (patcherActive) return;
@@ -82,6 +84,17 @@ export default function MySkins({
     } else {
       onSelectionChange({ ...selection, [championName]: skinName });
     }
+  };
+
+  const handleDelete = async (championName: string, skinName: string) => {
+    if (patcherActive) return;
+    // Also deselect if this skin was selected
+    if (selection[championName] === skinName) {
+      const next = { ...selection };
+      delete next[championName];
+      onSelectionChange(next);
+    }
+    await onDelete(championName, skinName);
   };
 
   const selectedCount = Object.keys(selection).length;
@@ -158,32 +171,43 @@ export default function MySkins({
                   {skins.map((skin) => {
                     const isSelected = selectedSkin === skin.skin_name;
                     return (
-                      <button
-                        key={skin.skin_name}
-                        onClick={() => toggleSkin(skin.champion_name, skin.skin_name)}
-                        className={[
-                          "relative h-20 w-28 overflow-hidden rounded transition-all",
-                          patcherActive ? "cursor-default opacity-50" : "cursor-pointer",
-                          isSelected
-                            ? "ring-gold-400 ring-offset-charcoal-400 ring-2 ring-offset-1"
-                            : "ring-charcoal-50/20 hover:ring-charcoal-50/40 ring-1",
-                        ].join(" ")}
-                        title={skin.skin_name}
-                      >
-                        <SkinThumb championName={skin.champion_name} skinName={skin.skin_name} />
+                      <div key={skin.skin_name} className="relative">
+                        <button
+                          onClick={() => toggleSkin(skin.champion_name, skin.skin_name)}
+                          className={[
+                            "relative h-20 w-28 overflow-hidden rounded transition-all",
+                            patcherActive ? "cursor-default opacity-50" : "cursor-pointer",
+                            isSelected
+                              ? "ring-gold-400 ring-offset-charcoal-400 ring-2 ring-offset-1"
+                              : "ring-charcoal-50/20 hover:ring-charcoal-50/40 ring-1",
+                          ].join(" ")}
+                          title={skin.skin_name}
+                        >
+                          <SkinThumb championName={skin.champion_name} skinName={skin.skin_name} />
 
-                        {isSelected && (
-                          <div className="bg-gold-400 absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full border border-white/30 shadow-sm">
-                            <Check size={11} strokeWidth={3} className="text-charcoal-600" />
+                          {isSelected && (
+                            <div className="bg-gold-400 absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full border border-white/30 shadow-sm">
+                              <Check size={11} strokeWidth={3} className="text-charcoal-600" />
+                            </div>
+                          )}
+
+                          <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 via-black/40 to-transparent px-1.5 pt-4 pb-1">
+                            <p className="line-clamp-3 text-[9px] leading-tight text-white/90">
+                              {skin.skin_name}
+                            </p>
                           </div>
-                        )}
+                        </button>
 
-                        <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 via-black/40 to-transparent px-1.5 pt-4 pb-1">
-                          <p className="line-clamp-3 text-[9px] leading-tight text-white/90">
-                            {skin.skin_name}
-                          </p>
-                        </div>
-                      </button>
+                        {!patcherActive && (
+                          <button
+                            onClick={() => handleDelete(skin.champion_name, skin.skin_name)}
+                            className="bg-charcoal-500 hover:bg-error text-ink-muted absolute top-1 left-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full shadow transition-colors hover:text-white"
+                            title="Delete"
+                          >
+                            <X size={10} strokeWidth={2.5} />
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

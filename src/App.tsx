@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
-import { Swords, Layers, Package, Settings as SettingsIcon } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { Swords, Layers, Package, Settings as SettingsIcon, Star } from "lucide-react";
 import { useGamePath } from "./hooks/useGamePath";
 import { usePatcher } from "./hooks/usePatcher";
 import { useDownloads } from "./hooks/useDownloads";
@@ -112,7 +113,11 @@ function App() {
             gamePath={gamePath}
             onPathChange={selectPath}
             patcherActive={patcher.isActive}
-            onSkinsCleared={dl.refresh}
+            onSkinsCleared={async () => {
+              setSkinSelection({});
+              await dl.refresh();
+            }}
+            onCustomsCleared={customs.refresh}
           />
         </div>
       );
@@ -136,6 +141,7 @@ function App() {
           patcherActive={patcher.isActive}
           selection={skinSelection}
           onSelectionChange={setSkinSelection}
+          onDelete={dl.deleteSkin}
         />
       );
     }
@@ -158,7 +164,7 @@ function App() {
 
   return (
     <div className="bg-charcoal-400 relative flex h-screen">
-      <aside className="border-border flex w-45 shrink-0 flex-col border-r">
+      <aside className="border-border flex w-50 shrink-0 flex-col border-r">
         <div className="flex items-end gap-2.5 px-4 py-4 select-none">
           <img src={logo} alt="Zushi" className="h-9 w-9" />
           <span className="font-logo text-gold-400 text-4xl leading-6 uppercase">Zushi</span>
@@ -188,6 +194,21 @@ function App() {
         </nav>
 
         <div className="mt-auto">
+          <button
+            onClick={() =>
+              invoke("open_url", { url: "https://github.com/Mouadzz/zushi" }).catch(() => {})
+            }
+            className="text-ink-muted hover:text-gold-400 mx-2 mb-2 flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors"
+          >
+            <Star
+              size={16}
+              strokeWidth={1.5}
+              fill="currentColor"
+              className="text-gold-400 shrink-0"
+            />
+            <span className="whitespace-nowrap">Star Zushi on GitHub</span>
+          </button>
+
           {update.updateAvailable && update.latestVersion ? (
             <UpdateBanner version={update.latestVersion} releasesUrl={update.releasesUrl} />
           ) : (

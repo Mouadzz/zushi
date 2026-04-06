@@ -1,6 +1,6 @@
 {
   "name": "zushi",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
     "@fontsource/rajdhani": "^5.2.7",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-autostart": "^2.5.1",
-    "@tauri-apps/plugin-dialog": "^2.6.0",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "lucide-react": "^0.575.0",
     "prettier-plugin-tailwindcss": "^0.7.2",

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Power, FolderOpen, Trash2, Loader2, HardDrive } from "lucide-react";
-import { getSkinsDirSize, getWorkDirSize, clearAllSkins, clearWorkDir } from "../lib/commands";
+import { getSkinsDirSize, getWorkDirSize, getCustomsDirSize, clearAllSkins, clearWorkDir, clearAllCustoms } from "../lib/commands";
 import Toast from "./Toast";
 
 interface SettingsProps {
@@ -10,6 +10,7 @@ interface SettingsProps {
   onPathChange: (path: string) => Promise<boolean>;
   patcherActive: boolean;
   onSkinsCleared: () => Promise<void>;
+  onCustomsCleared: () => Promise<void>;
 }
 
 function formatSize(bytes: number): string {
@@ -24,6 +25,7 @@ export default function Settings({
   onPathChange,
   patcherActive,
   onSkinsCleared,
+  onCustomsCleared,
 }: SettingsProps) {
   const [autoStart, setAutoStart] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
@@ -34,8 +36,10 @@ export default function Settings({
   const [skinsSize, setSkinsSize] = useState(0);
   const [workSize, setWorkSize] = useState(0);
   const [cacheLoading, setCacheLoading] = useState(true);
+  const [customsSize, setCustomsSize] = useState(0);
   const [clearingSkins, setClearingSkins] = useState(false);
   const [clearingWork, setClearingWork] = useState(false);
+  const [clearingCustoms, setClearingCustoms] = useState(false);
 
   useEffect(() => {
     isEnabled()
@@ -47,9 +51,10 @@ export default function Settings({
   const refreshCache = useCallback(async () => {
     setCacheLoading(true);
     try {
-      const [s, w] = await Promise.all([getSkinsDirSize(), getWorkDirSize()]);
+      const [s, w, c] = await Promise.all([getSkinsDirSize(), getWorkDirSize(), getCustomsDirSize()]);
       setSkinsSize(s);
       setWorkSize(w);
+      setCustomsSize(c);
     } catch {
       // ignore
     }
@@ -102,6 +107,7 @@ export default function Settings({
     setClearingSkins(true);
     try {
       await clearAllSkins();
+      localStorage.removeItem("zushi_skin_selection");
       await onSkinsCleared();
     } catch {
       // ignore
@@ -121,7 +127,20 @@ export default function Settings({
     await refreshCache();
   };
 
-  const totalSize = skinsSize + workSize;
+  const handleClearCustoms = async () => {
+    setClearingCustoms(true);
+    try {
+      await clearAllCustoms();
+      localStorage.removeItem("zushi_customs_enabled");
+      await onCustomsCleared();
+    } catch {
+      // ignore
+    }
+    setClearingCustoms(false);
+    await refreshCache();
+  };
+
+  const totalSize = skinsSize + workSize + customsSize;
 
   return (
     <div className="h-full w-full overflow-y-auto p-5">
@@ -217,6 +236,31 @@ export default function Settings({
               className="border-border text-ink-secondary hover:text-error hover:border-error/40 flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors disabled:pointer-events-none disabled:opacity-30"
             >
               {clearingSkins ? (
+                <Loader2 size={13} strokeWidth={2} className="animate-spin" />
+              ) : (
+                <Trash2 size={13} strokeWidth={1.5} />
+              )}
+              Clear
+            </button>
+          </div>
+        </div>
+
+        {/* Custom mods */}
+        <div className="flex items-center justify-between px-4 py-3.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-ink text-sm">Custom Mods</span>
+            <span className="text-ink-muted text-xs">Imported .zip and .fantome files</span>
+          </div>
+          <div className="flex shrink-0 items-center gap-4">
+            <span className="text-ink-secondary min-w-16 text-right text-sm tabular-nums">
+              {cacheLoading ? "..." : formatSize(customsSize)}
+            </span>
+            <button
+              onClick={handleClearCustoms}
+              disabled={clearingCustoms || customsSize === 0 || patcherActive}
+              className="border-border text-ink-secondary hover:text-error hover:border-error/40 flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors disabled:pointer-events-none disabled:opacity-30"
+            >
+              {clearingCustoms ? (
                 <Loader2 size={13} strokeWidth={2} className="animate-spin" />
               ) : (
                 <Trash2 size={13} strokeWidth={1.5} />

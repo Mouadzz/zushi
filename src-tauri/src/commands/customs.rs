@@ -124,6 +124,21 @@ pub async fn remove_custom(app: AppHandle, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn clear_all_customs(app: AppHandle) -> Result<(), String> {
+    let base = customs_dir(&app);
+    flatten(
+        tauri::async_runtime::spawn_blocking(move || {
+            if base.exists() {
+                fs::remove_dir_all(&base).map_err(|e| e.to_string())?;
+                fs::create_dir_all(&base).ok();
+            }
+            Ok(())
+        })
+        .await,
+    )
+}
+
+#[tauri::command]
 pub async fn get_customs_dir_size(app: AppHandle) -> Result<u64, String> {
     let base = customs_dir(&app);
     flatten(tauri::async_runtime::spawn_blocking(move || Ok(super::dir_size(&base))).await)

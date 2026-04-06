@@ -101,7 +101,7 @@ export default function Customs({ customs, onAdd, onRemove, onToggle }: CustomsP
         <p
           className={`text-sm font-medium ${draggingOver ? "text-gold-400" : "text-ink-secondary"}`}
         >
-          {adding ? `Adding ${adding}...` : "Drop .zip mods here"}
+          {adding ? `Adding ${adding}...` : "Drop mods here"}
         </p>
         <p className="text-ink-muted text-xs">or click to browse</p>
       </div>

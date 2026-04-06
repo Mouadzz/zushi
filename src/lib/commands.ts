@@ -83,6 +83,10 @@ export async function removeCustom(name: string): Promise<void> {
   return invoke("remove_custom", { name });
 }
 
+export async function clearAllCustoms(): Promise<void> {
+  return invoke("clear_all_customs");
+}
+
 export async function getCustomsDirSize(): Promise<number> {
   return invoke("get_customs_dir_size");
 }

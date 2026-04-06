@@ -9,6 +9,7 @@
     "shell:allow-spawn",
     "shell:allow-stdin-write",
     "shell:allow-kill",
+    "shell:allow-open",
     "dialog:allow-open",
     "autostart:allow-enable",
     "autostart:allow-disable",
