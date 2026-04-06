@@ -240,7 +240,9 @@ pub fn run() {
             commands::customs::import_custom,
             commands::customs::list_customs,
             commands::customs::remove_custom,
+            commands::customs::clear_all_customs,
             commands::customs::get_customs_dir_size,
+            commands::open_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

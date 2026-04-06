@@ -90,5 +90,5 @@ export function useCustoms() {
   const enabledPaths = customs.filter((c) => c.enabled).map((c) => c.file_path);
   const enabledCount = enabledPaths.length;
 
-  return { customs, addCustom, remove, toggle, enabledPaths, enabledCount, error, clearError };
+  return { customs, addCustom, remove, toggle, refresh, enabledPaths, enabledCount, error, clearError };
 }
