@@ -205,6 +205,11 @@ auto Process::AllocateMemory(size_t size) const -> void* {
 }
 
 auto Process::PtraceAttach() const -> void {
+    // PT_ATTACH is deprecated on macOS in favor of PT_ATTACHEXC, but in this
+    // codebase PT_ATTACHEXC actually crashes inside __ptrace on macOS 26. The
+    // deprecation warning is acknowledged; we stay on PT_ATTACH because it
+    // works. The real reliability gain is in the caller: always PtraceDetach
+    // after a successful attach, even if the patch step throws.
     if (ptrace(PT_ATTACH, pid_, nullptr, 0) == -1) {
         lol_throw_msg("ptrace PT_ATTACH (pid: {}): errno {}", pid_, errno);
     }
