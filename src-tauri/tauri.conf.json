@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Zushi",
-        "width": 1100,
-        "height": 620,
+        "width": 1280,
+        "height": 720,
         "resizable": false,
         "maximizable": false,
         "center": true,
