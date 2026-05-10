@@ -65,8 +65,7 @@ function App() {
     });
   }, []);
 
-  // Preload caches. ensureChromaInfo is best-effort: if it lands later, the
-  // useChromaReady hook in MySkins picks it up and re-groups.
+  // Preload caches
   useEffect(() => {
     ensureChampions().catch(() => {});
     ensureSkinIds().catch(() => {});

@@ -4,10 +4,6 @@ import { splashUrl, findChampionByName, championAvatar } from "../hooks/useChamp
 import { lookupSplashNum, lookupChromaInfo, ensureChromaInfo } from "../hooks/useSkinData";
 import type { DownloadedSkin } from "../types";
 
-// Re-renders this component when chroma metadata finishes loading from
-// Community Dragon. Without this, a user who opens MySkins before chroma
-// data lands would see chromas as flat un-grouped entries and never see them
-// fold up. The hook is idempotent — second call resolves from the cache.
 function useChromaReady() {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -23,12 +19,10 @@ function useChromaReady() {
   }, []);
 }
 
-// A base skin in MySkins, paired with whichever of its chromas the user has
-// downloaded. If `base` is null the user only owns chromas of this base — we
-// still render a thumb (using the parent skin's splash) so chromas are reachable.
+// base is null when the user only owns chromas of this base.
 type DownloadGroup = {
   base: DownloadedSkin | null;
-  baseSkinName: string; // the base skin's name (real or virtual)
+  baseSkinName: string;
   chromas: { dl: DownloadedSkin; colors: string[] }[];
 };
 
@@ -127,11 +121,8 @@ export default function MySkins({
     await onDelete(championName, skinName);
   };
 
-  // Delete a base skin AND all its chromas in one go. Used by the X on the
-  // group card so users don't have to right-click each chroma individually.
   const handleDeleteGroup = async (championName: string, skinNames: string[]) => {
     if (patcherActive || skinNames.length === 0) return;
-    // Drop selection if any of the targets is currently selected.
     if (skinNames.includes(selection[championName])) {
       const next = { ...selection };
       delete next[championName];
@@ -164,15 +155,11 @@ export default function MySkins({
     );
   }
 
-  // Two-level grouping: champion → list of (base + its downloaded chromas).
-  // Pass 1 separates bases from chromas; pass 2 attaches chromas to their
-  // base group, creating a placeholder group when the base isn't downloaded.
   const grouped = new Map<string, DownloadGroup[]>();
   for (const skin of downloads) {
     const champGroups = grouped.get(skin.champion_name) ?? [];
     const chromaInfo = lookupChromaInfo(skin.skin_name);
     if (chromaInfo) {
-      // Chroma — attach to its base group, creating a baseless one if needed.
       let g = champGroups.find((g) => g.baseSkinName === chromaInfo.parentName);
       if (!g) {
         g = { base: null, baseSkinName: chromaInfo.parentName, chromas: [] };
@@ -180,7 +167,6 @@ export default function MySkins({
       }
       g.chromas.push({ dl: skin, colors: chromaInfo.colors });
     } else {
-      // Base — find/create its group and fill in the base.
       let g = champGroups.find((g) => g.baseSkinName === skin.skin_name);
       if (!g) {
         g = { base: skin, baseSkinName: skin.skin_name, chromas: [] };
@@ -192,14 +178,9 @@ export default function MySkins({
     grouped.set(skin.champion_name, champGroups);
   }
 
-  // "Skins" count excludes chromas — chromas are variants of a base, not
-  // standalone entries. A champion with 3 bases + 12 chromas counts as 3.
-  // We just sum group counts across champions.
   let baseSkinCount = 0;
   for (const groups of grouped.values()) baseSkinCount += groups.length;
 
-  // Filter champion groups by search query (case-insensitive substring on
-  // champion name). Empty query matches everything.
   const query = search.trim().toLowerCase();
   const filteredEntries = query
     ? [...grouped.entries()].filter(([champion]) => champion.toLowerCase().includes(query))
@@ -251,8 +232,6 @@ export default function MySkins({
           )}
           {filteredEntries.map(([champion, groups]) => {
             const selectedSkin = selection[champion];
-            // Champion-row count: number of base-skin groups, not raw downloaded
-            // entries — keeps the row label in sync with the global header.
             const baseCount = groups.length;
             return (
               <div
@@ -271,9 +250,6 @@ export default function MySkins({
 
                 <div className="flex min-w-0 flex-1 flex-wrap gap-2">
                   {groups.map((group) => {
-                    // The thumbnail represents the base skin (or a placeholder
-                    // standing in for one if only chromas are downloaded).
-                    // Click selects the base; chromas have their own dots.
                     const baseSelected = selectedSkin === group.baseSkinName;
                     const selectedChroma = group.chromas.find(
                       (c) => c.dl.skin_name === selectedSkin
@@ -281,10 +257,6 @@ export default function MySkins({
                     const anySelected = baseSelected || !!selectedChroma;
                     const baseClickable = !patcherActive && group.base !== null;
 
-                    // Only wrap as a "card" when this base has chromas — that's
-                    // when we need to visually contain the thumb + the swatch
-                    // row as a single unit. Without chromas, render the thumb
-                    // bare so the row reads identically to the pre-chroma layout.
                     const hasChromas = group.chromas.length > 0;
                     return (
                       <div
@@ -295,10 +267,6 @@ export default function MySkins({
                             : ""
                         }
                       >
-                        {/* Thumb + X are wrapped together in their own `relative`
-                            container so the X anchors to the thumb's corner —
-                            independent of whether the outer wrapper has padding
-                            (chromas present) or not. */}
                         <div className="relative">
                           <button
                             onClick={() => {
@@ -352,10 +320,6 @@ export default function MySkins({
                             </div>
                           </button>
 
-                          {/* Delete button cascades: deletes the base AND every
-                              downloaded chroma in this group, so users don't need
-                              to nuke chromas individually. Right-click on a swatch
-                              still deletes just that one chroma. */}
                           {!patcherActive && group.base && (
                             <button
                               onClick={() => {
@@ -376,9 +340,6 @@ export default function MySkins({
                           )}
                         </div>
 
-                        {/* Chroma swatches under the thumb. Click selects the
-                            chroma; right-click deletes (kept simple — no
-                            per-swatch X to avoid visual clutter). */}
                         {group.chromas.length > 0 && (
                           <div className="mt-1 flex w-32 flex-wrap items-center gap-1">
                             {group.chromas.map((c) => {

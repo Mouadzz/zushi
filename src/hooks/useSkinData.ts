@@ -6,9 +6,6 @@ const SKIN_IDS_URL =
   "https://raw.githubusercontent.com/Alban1911/LeagueSkins/main/resources/en/skin_ids.json";
 const TREE_API_URL =
   "https://api.github.com/repos/Alban1911/LeagueSkins/git/trees/main?recursive=1";
-// Community Dragon: single JSON with every skin's id/name/chromas[] (with hex
-// colors). Used for chroma classification and color swatches; the LeagueSkins
-// repo provides the actual zips.
 const SKINS_JSON_URL =
   "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/skins.json";
 
@@ -16,12 +13,8 @@ const SKIN_IDS_CACHE_KEY = "zushi:skin_ids";
 const REPO_ZIPS_CACHE_KEY = "zushi:repo_zips";
 const CHROMAS_CACHE_KEY = "zushi:chromas";
 
-// Module-level caches
 let skinIdsCache: Record<string, string> | null = null;
 let repoZipsCache: Map<string, string> | null = null;
-// chromaInfoCache maps numeric chroma id (e.g. 266008) to its color list and
-// the numeric id of its parent base skin. If null after fetch, chromas just
-// render without colors — UI degrades gracefully.
 let chromaInfoCache: Map<number, { colors: string[]; parentId: number }> | null = null;
 
 export function ensureSkinIds(): Promise<Record<string, string>> {
@@ -80,9 +73,6 @@ export function ensureRepoZips(): Promise<Map<string, string>> {
     });
 }
 
-// Fetches Community Dragon's skins.json (all skins indexed by id, with each
-// base skin's chromas array). Builds a map keyed by chroma id → {colors, parentId}.
-// This is best-effort: if the fetch fails, chroma swatches just won't show colors.
 export function ensureChromaInfo(): Promise<Map<number, { colors: string[]; parentId: number }>> {
   if (chromaInfoCache) return Promise.resolve(chromaInfoCache);
 
@@ -110,7 +100,6 @@ export function ensureChromaInfo(): Promise<Map<number, { colors: string[]; pare
       return map;
     })
     .catch(() => {
-      // Degrade silently — return an empty map so the rest of the app keeps working.
       chromaInfoCache = new Map();
       return chromaInfoCache;
     });
@@ -143,15 +132,6 @@ export function getSkinsForChampion(champion: Champion, skinIds: Record<string, 
   return skins;
 }
 
-/**
- * Group a champion's flat skin list into base skins each carrying their
- * chromas. A skin is classified as a chroma iff its numeric id appears in
- * Community Dragon's chroma map (chromaInfoCache); the regex-on-name approach
- * was unreliable because some legitimate skin names contain parentheses.
- *
- * If chroma info hasn't loaded yet (or failed), every skin becomes its own
- * group with empty chromas — UI just shows the flat layout.
- */
 export function getSkinsGroupedForChampion(
   champion: Champion,
   skinIds: Record<string, string>
@@ -165,19 +145,17 @@ export function getSkinsGroupedForChampion(
   for (const s of flat) byId.set(parseInt(s.id, 10), s);
 
   const groups = new Map<number, SkinGroup>();
-  const orphans: Chroma[] = []; // chromas whose parent isn't in skin_ids (rare)
+  const orphans: Chroma[] = [];
 
   for (const s of flat) {
     const numericId = parseInt(s.id, 10);
     const chromaInfo = chromaInfoCache.get(numericId);
 
     if (!chromaInfo) {
-      // Base skin — give it an empty group; chromas attach below.
       groups.set(numericId, { base: s, chromas: [] });
       continue;
     }
 
-    // Chroma — find/create its parent's group and attach.
     const parentSkin = byId.get(chromaInfo.parentId);
     const parentName = parentSkin?.name ?? s.name.replace(/\s+\([^)]+\)$/, "");
     const chroma: Chroma = { ...s, parentName, colors: chromaInfo.colors };
@@ -186,45 +164,31 @@ export function getSkinsGroupedForChampion(
     if (parentGroup) {
       parentGroup.chromas.push(chroma);
     } else {
-      // Parent not iterated yet (or missing) — defer.
       orphans.push(chroma);
     }
   }
 
-  // Re-attach any chromas whose parent appeared after them, or surface as
-  // standalone if the parent really doesn't exist in this champion's set.
   for (const c of orphans) {
-    const numericParentId = parseInt(c.id, 10) - (parseInt(c.id, 10) % 1000); // not actually right; use chromaInfo
-    void numericParentId;
     const info = chromaInfoCache.get(parseInt(c.id, 10));
     const g = info ? groups.get(info.parentId) : undefined;
     if (g) {
       g.chromas.push(c);
     } else {
-      // Parent base skin missing from skin_ids — treat as standalone so it stays usable.
       groups.set(parseInt(c.id, 10), { base: c, chromas: [] });
     }
   }
 
-  // Sort: groups by base skin num, chromas inside by their own num.
   const result = [...groups.values()];
   result.sort((a, b) => a.base.num - b.base.num);
   for (const g of result) g.chromas.sort((a, b) => a.num - b.num);
   return result;
 }
 
-/**
- * Look up chroma metadata by skin name (e.g. "Battle Academia Briar (Pearl)").
- * Returns null if the name isn't a known chroma OR if chroma data hasn't loaded
- * yet. MySkins uses this to decide whether a downloaded entry is a chroma and
- * what color/parent to render it under.
- */
 export function lookupChromaInfo(
   skinName: string
 ): { colors: string[]; parentName: string } | null {
   if (!skinIdsCache || !chromaInfoCache) return null;
 
-  // Find the numeric id for this skin name (downloads only carry the name).
   let foundId: number | null = null;
   for (const [id, name] of Object.entries(skinIdsCache)) {
     if (name === skinName) {
@@ -237,8 +201,6 @@ export function lookupChromaInfo(
   const info = chromaInfoCache.get(foundId);
   if (!info) return null;
 
-  // Resolve parent's display name from skin_ids (falls back to stripping the
-  // "(Variant)" suffix if the parent id somehow isn't there).
   const parentEntry = Object.entries(skinIdsCache).find(
     ([id]) => parseInt(id, 10) === info.parentId
   );
@@ -337,13 +299,10 @@ export function useSkinData(champion: Champion | null) {
     if (skinIdsCache && repoZipsCache) {
       setSkinIds(skinIdsCache);
       setLoading(false);
-      // Chroma info loads in background — non-blocking. If it lands later,
-      // the next champion render picks it up.
       void ensureChromaInfo();
       return;
     }
 
-    // Chroma info is best-effort: we don't block initial loading on it.
     void ensureChromaInfo();
     Promise.all([ensureSkinIds(), ensureRepoZips()])
       .then(([ids]) => {

@@ -47,24 +47,12 @@ function SkinSplash({ skin }: { skin: Skin }) {
   );
 }
 
-// Tiny coloured square representing a chroma. Single-color → solid fill,
-// two-color → diagonal split. Border/check overlay reflects per-chroma state
-// (downloaded, downloading, available, not-in-repo). 0 colors falls back to
-// a neutral square so chromas without color metadata still render.
 function ChromaSwatch({
   chroma,
-  downloaded,
-  isDownloading,
   available,
-  busy,
-  onDownload,
 }: {
   chroma: Chroma;
-  downloaded: boolean;
-  isDownloading: boolean;
   available: boolean;
-  busy: boolean;
-  onDownload: () => void;
 }) {
   const [c1, c2] = chroma.colors;
   const bg = !c1
@@ -73,36 +61,17 @@ function ChromaSwatch({
       ? `linear-gradient(135deg, ${c1} 0% 50%, ${c2} 50% 100%)`
       : c1;
 
-  // Per-chroma "downloaded" state is intentionally not shown — the big card's
-  // single checkmark already conveys it (chromas come down with the base via
-  // the cascade). Swatches only show: spinner while in flight, a soft ring
-  // when available, dimmed when not in repo. Clicking still downloads just
-  // that chroma if a user wants to grab one in isolation.
-  const ring = isDownloading
-    ? "ring-gold-400 ring-2"
-    : available
-      ? "ring-charcoal-50/30 hover:ring-gold-400/80 ring-1"
-      : "ring-charcoal-50/10 opacity-30 ring-1";
-
-  const clickable = available && !busy && !downloaded && !isDownloading;
-
   return (
-    <button
-      type="button"
-      onClick={clickable ? onDownload : undefined}
-      disabled={!clickable}
+    <div
       title={`${chroma.name}${!available ? " (not available)" : ""}`}
       className={[
-        "ring-offset-charcoal-500 relative h-5 w-5 shrink-0 rounded-sm ring-offset-1 transition-all",
-        clickable ? "cursor-pointer" : "cursor-default",
-        ring,
+        "h-5 w-5 shrink-0 rounded-sm ring-1 transition-all",
+        available
+          ? "ring-charcoal-50/30"
+          : "ring-charcoal-50/10 opacity-30",
       ].join(" ")}
       style={{ background: bg ?? "var(--color-charcoal-400, #2a2a2a)" }}
-    >
-      {isDownloading && (
-        <Loader2 size={10} strokeWidth={2.5} className="absolute inset-0 m-auto animate-spin text-white" />
-      )}
-    </button>
+    />
   );
 }
 
@@ -110,7 +79,6 @@ function SkinCard({
   group,
   downloadKeyState,
   busy,
-  onDownloadSkin,
   onDownloadGroup,
 }: {
   group: SkinGroup;
@@ -121,10 +89,6 @@ function SkinCard({
     url: string | null;
   };
   busy: boolean;
-  onDownloadSkin: (url: string, championName: string, skinName: string) => void;
-  // Click on the base skin's main DL button: pull the base AND every chroma in
-  // one batch (skipping any that are already on disk or unavailable). Chroma
-  // swatches still individually trigger only their own chroma.
   onDownloadGroup: (group: SkinGroup) => void;
 }) {
   const baseState = downloadKeyState(group.base.championName, group.base.name);
@@ -180,19 +144,7 @@ function SkinCard({
           <div className="mt-1.5 flex flex-wrap items-center gap-1">
             {group.chromas.map((chroma) => {
               const cs = downloadKeyState(chroma.championName, chroma.name);
-              return (
-                <ChromaSwatch
-                  key={chroma.id}
-                  chroma={chroma}
-                  downloaded={cs.downloaded}
-                  isDownloading={cs.isDownloading}
-                  available={cs.available}
-                  busy={busy}
-                  onDownload={() => {
-                    if (cs.url) onDownloadSkin(cs.url, chroma.championName, chroma.name);
-                  }}
-                />
-              );
+              return <ChromaSwatch key={chroma.id} chroma={chroma} available={cs.available} />;
             })}
           </div>
         )}
@@ -212,15 +164,11 @@ export default function ChampionDetail({
   const { skins, groups, loading, error } = useSkinData(champion);
 
   const busy = downloading !== null;
-  // Download All still walks the flat list — bases AND chromas, every entry
-  // that has a zip in the LeagueSkins repo and isn't already on disk.
   const notDownloaded = skins.filter(
     (s) => !isDownloaded(s.championName, s.name) && isSkinAvailable(s)
   );
   const allDownloaded = notDownloaded.length === 0 && skins.length > 0;
 
-  // Per-card lookup. Centralised so SkinCard/ChromaSwatch don't have to
-  // re-derive the four state bits in two places.
   const downloadKeyState = (championName: string, skinName: string) => {
     const dlKey = `${championName}/${skinName}`;
     const stub = { championName, name: skinName } as Skin;
@@ -243,9 +191,6 @@ export default function ChampionDetail({
     if (items.length > 0) onDownloadAll(items);
   };
 
-  // Click on a skin card's main DL button: queue the base + every chroma in
-  // that group, skipping anything already on disk or unavailable. Goes through
-  // the same onDownloadAll path so the existing batch-progress UI applies.
   const handleDownloadGroup = (group: SkinGroup) => {
     const items: { url: string; championName: string; skinName: string }[] = [];
     const candidates: Skin[] = [group.base, ...group.chromas];
@@ -256,8 +201,6 @@ export default function ChampionDetail({
       items.push({ url, championName: s.championName, skinName: s.name });
     }
     if (items.length === 1) {
-      // Single item — go through the single-download path so progress shows
-      // on the one card instead of triggering batch UI for nothing.
       onDownload(items[0].url, items[0].championName, items[0].skinName);
     } else if (items.length > 1) {
       onDownloadAll(items);
@@ -328,7 +271,6 @@ export default function ChampionDetail({
                 group={group}
                 downloadKeyState={downloadKeyState}
                 busy={busy}
-                onDownloadSkin={onDownload}
                 onDownloadGroup={handleDownloadGroup}
               />
             ))}
