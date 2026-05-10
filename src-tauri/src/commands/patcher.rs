@@ -92,12 +92,20 @@ fn start_apply(
         return Err("No skins selected".to_string());
     }
 
-    {
-        let s = state.lock().map_err(|e| e.to_string())?;
-        if s.patcher_stdin.is_some() {
-            return Err("Patcher is already running. Stop it first.".to_string());
+    // Auto-stop any existing patcher: signal it to exit by closing its stdin.
+    // We capture its pid so the spawned worker thread can wait for it to *fully*
+    // die before doing anything that touches the game (ptrace, mach_vm_*).
+    // Otherwise: two not-fully-reaped mod-tools processes both holding mach
+    // task ports to the same target → kernel SIGSEGVs the new tracer on macOS.
+    let old_patcher_pid: Option<u32> = {
+        let mut s = state.lock().map_err(|e| e.to_string())?;
+        let stdin = s.patcher_stdin.take();
+        if let Some(mut pipe) = stdin {
+            pipe.write_all(b"\n").ok();
+            drop(pipe);
         }
-    }
+        s.patcher_pid
+    };
 
     let game_path = {
         let s = state.lock().map_err(|e| e.to_string())?;
@@ -121,11 +129,28 @@ fn start_apply(
     let base = work_dir(&app);
 
     std::thread::spawn(move || {
+        // Wait for the old mod-tools process to be fully reaped by the kernel
+        // before we touch the game. kill(pid, 0) is a no-op probe: returns 0
+        // while the pid still exists, -1 (ESRCH) once it's gone. Cap at 5s so
+        // a stuck process doesn't deadlock the new apply forever.
+        if let Some(pid) = old_patcher_pid {
+            let pid_i = pid as i32;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                let alive = unsafe { libc::kill(pid_i, 0) } == 0;
+                if !alive {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        }
+
         if let Err(e) = do_apply_skins_bg(binary, base, game_path, zip_paths, state.clone(), gen) {
             if let Ok(mut s) = state.lock() {
                 if s.patcher_gen == gen {
                     s.patcher_status = PatcherStatus::Error(e);
                     s.patcher_stdin = None;
+                    s.patcher_pid = None;
                 }
             }
         }
@@ -224,11 +249,13 @@ fn do_apply_skins_bg(
         .spawn()
         .map_err(|e| format!("Failed to start patcher: {}", e))?;
 
+    let child_pid = child.id();
     let stdin = child.stdin.take();
     {
         if let Ok(mut s) = state.lock() {
             if s.patcher_gen == gen {
                 s.patcher_stdin = stdin;
+                s.patcher_pid = Some(child_pid);
             }
         }
     }
@@ -282,14 +309,27 @@ fn do_apply_skins_bg(
     if let Ok(mut s) = state.lock() {
         if s.patcher_gen == gen {
             if !exit_status.success() {
-                let code = exit_status.code().unwrap_or(-1);
-                eprintln!("[zushi] mod-tools runoverlay exited with code {}", code);
+                use std::os::unix::process::ExitStatusExt;
+                let detail = if let Some(code) = exit_status.code() {
+                    format!("exit code {}", code)
+                } else if let Some(sig) = exit_status.signal() {
+                    let name = match sig {
+                        1 => "SIGHUP", 2 => "SIGINT", 3 => "SIGQUIT", 6 => "SIGABRT",
+                        9 => "SIGKILL", 10 => "SIGBUS", 11 => "SIGSEGV", 13 => "SIGPIPE",
+                        15 => "SIGTERM", _ => "?",
+                    };
+                    format!("killed by signal {} ({})", sig, name)
+                } else {
+                    "unknown".to_string()
+                };
+                eprintln!("[zushi] mod-tools runoverlay exited: {}", detail);
                 s.patcher_status =
-                    PatcherStatus::Error(format!("Patcher exited unexpectedly (code {})", code));
+                    PatcherStatus::Error(format!("Patcher exited unexpectedly ({})", detail));
             } else {
                 s.patcher_status = PatcherStatus::Idle;
             }
             s.patcher_stdin = None;
+            s.patcher_pid = None;
         }
     }
 

@@ -31,6 +31,7 @@ pub struct AppState {
     pub status: AppStatus,
     pub patcher_status: PatcherStatus,
     pub patcher_stdin: Option<ChildStdin>,
+    pub patcher_pid: Option<u32>,
     pub patcher_gen: u64,
 }
 

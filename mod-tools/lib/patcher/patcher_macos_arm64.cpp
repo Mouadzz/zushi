@@ -274,71 +274,86 @@ auto patcher::run(std::function<void(Message, char const*)> update,
             continue;
         }
 
-        update(M_FOUND, "");
-        auto process = Process::Open(pid);
+        // Per-iteration try/catch: a single bad patch attempt (e.g. game process
+        // racing through dyld init faster than we can attach, mach_vm_* error on
+        // a partially-initialized task, ptrace EBUSY) must not exit the patcher.
+        // Mark this PID as last_patched so we don't busy-spin retrying it, log the
+        // reason to stderr (visible in Tauri console), and let the next FindPid
+        // iteration handle the next game launch.
+        try {
+            update(M_FOUND, "");
+            auto process = Process::Open(pid);
 
-        update(M_SCAN, "");
-        ctx.scan(process);
+            update(M_SCAN, "");
+            ctx.scan(process);
 
-        // Check if this process was already patched (e.g. by a previous patcher
-        // instance). Read the first 8 bytes at wad_verify - if they match our
-        // "return true" shellcode, skip straight to waiting for exit.
-        {
-            auto const ptr_wad_verify = process.Rebase(ctx.off_wad_verify);
-            unsigned char probe[8] = {};
-            Payload_wad_verify expected{};
-            if (process.TryReadMemory((void*)(uintptr_t)ptr_wad_verify, probe, sizeof(probe))
-                && std::memcmp(probe, expected.return_true, sizeof(probe)) == 0) {
-                // Already patched — just wait for this game to exit
-                last_patched_pid = pid;
-                update(M_WAIT_EXIT, "");
-                run_until_or(
-                    3h,
-                    Intervals{5s, 10s, 15s},
-                    [&] { return process.IsExited(); },
-                    []() -> bool { throw PatcherTimeout(std::string("Timed out exit")); });
-                update(M_DONE, "");
-                continue;
-            }
-        }
-
-        update(M_PATCH, "");
-
-        // Phase 1: Freeze process, write shellcode + wad_verify bypass
-        process.PtraceAttach();
-        ctx.patch(process);
-        process.PtraceDetach();
-
-        // Phase 2: Wait for dyld to resolve fopen lazy binding, then overwrite
-        // with our hook. macOS 26 eagerly resolves lazy bindings after process
-        // resume, so we must wait for resolution before overwriting.
-        {
-            auto const ptr_fopen_ptr = process.Rebase(ctx.off_fopen_ptr);
-            auto const real_fopen = (PtrStorage)dlsym(RTLD_DEFAULT, "fopen");
-            PtrStorage current = 0;
-
-            for (int i = 0; i < 5000; i++) {
-                if (!process.TryReadMemory((void*)(uintptr_t)ptr_fopen_ptr, &current, sizeof(current))) {
-                    break;
+            // Check if this process was already patched (e.g. by a previous patcher
+            // instance). Read the first 8 bytes at wad_verify - if they match our
+            // "return true" shellcode, skip straight to waiting for exit.
+            {
+                auto const ptr_wad_verify = process.Rebase(ctx.off_wad_verify);
+                unsigned char probe[8] = {};
+                Payload_wad_verify expected{};
+                if (process.TryReadMemory((void*)(uintptr_t)ptr_wad_verify, probe, sizeof(probe))
+                    && std::memcmp(probe, expected.return_true, sizeof(probe)) == 0) {
+                    // Already patched — just wait for this game to exit
+                    last_patched_pid = pid;
+                    update(M_WAIT_EXIT, "");
+                    run_until_or(
+                        3h,
+                        Intervals{5s, 10s, 15s},
+                        [&] { return process.IsExited(); },
+                        []() -> bool { throw PatcherTimeout(std::string("Timed out exit")); });
+                    update(M_DONE, "");
+                    continue;
                 }
-                if (current == real_fopen) {
-                    PtrStorage hook_addr = ctx.ptr_fopen_hook_addr;
-                    process.WriteMemory((void*)(uintptr_t)ptr_fopen_ptr, &hook_addr, sizeof(hook_addr));
-                    break;
-                }
-                sleep_ms(1);
             }
+
+            update(M_PATCH, "");
+
+            // Phase 1: Freeze process, write shellcode + wad_verify bypass
+            process.PtraceAttach();
+            ctx.patch(process);
+            process.PtraceDetach();
+
+            // Phase 2: Wait for dyld to resolve fopen lazy binding, then overwrite
+            // with our hook. macOS 26 eagerly resolves lazy bindings after process
+            // resume, so we must wait for resolution before overwriting.
+            {
+                auto const ptr_fopen_ptr = process.Rebase(ctx.off_fopen_ptr);
+                auto const real_fopen = (PtrStorage)dlsym(RTLD_DEFAULT, "fopen");
+                PtrStorage current = 0;
+
+                for (int i = 0; i < 5000; i++) {
+                    if (!process.TryReadMemory((void*)(uintptr_t)ptr_fopen_ptr, &current, sizeof(current))) {
+                        break;
+                    }
+                    if (current == real_fopen) {
+                        PtrStorage hook_addr = ctx.ptr_fopen_hook_addr;
+                        process.WriteMemory((void*)(uintptr_t)ptr_fopen_ptr, &hook_addr, sizeof(hook_addr));
+                        break;
+                    }
+                    sleep_ms(1);
+                }
+            }
+
+            last_patched_pid = pid;
+            update(M_WAIT_EXIT, "");
+            run_until_or(
+                3h,
+                Intervals{5s, 10s, 15s},
+                [&] { return process.IsExited(); },
+                []() -> bool { throw PatcherTimeout(std::string("Timed out exit")); });
+
+            update(M_DONE, "");
+        } catch (PatcherAborted const&) {
+            throw;  // user-initiated abort: propagate so mod_runoverlay can clean up
+        } catch (std::exception const& e) {
+            last_patched_pid = pid;  // don't hot-spin on the same broken PID
+            std::fprintf(stderr, "[patcher] iteration failed for pid=%u: %s\n", pid, e.what());
+            std::fflush(stderr);
+            // Fall through to next iteration — patcher stays alive and keeps watching.
         }
-
-        last_patched_pid = pid;
-        update(M_WAIT_EXIT, "");
-        run_until_or(
-            3h,
-            Intervals{5s, 10s, 15s},
-            [&] { return process.IsExited(); },
-            []() -> bool { throw PatcherTimeout(std::string("Timed out exit")); });
-
-        update(M_DONE, "");
     }
 }
 

@@ -1,3 +1,4 @@
+#include <csignal>
 #include <cstdio>
 #include <error.hpp>
 #include <fs.hpp>
@@ -308,6 +309,19 @@ static auto help(fs::path cmd) -> void {
 }
 
 int main(int argc, char** argv) {
+    // Don't let a broken stdout pipe (parent reader thread exited, etc.) kill us
+    // with SIGPIPE — make writes return EPIPE instead. Without this, fprintf to
+    // a closed pipe terminates the process by signal, surfacing in Tauri as
+    // "Patcher exited unexpectedly (code -1)". Use sigaction (not std::signal)
+    // because std::signal's behavior is unspecified on macOS w.r.t. threads.
+    {
+        struct sigaction sa = {};
+        sa.sa_handler = SIG_IGN;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sigaction(SIGPIPE, &sa, nullptr);
+    }
+
     utility::set_binary_io();
     fmtlog::setHeaderPattern("[{l}] ");
     fmtlog::setLogFile(stdout, false);
