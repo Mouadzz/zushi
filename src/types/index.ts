@@ -28,6 +28,21 @@ export interface Skin {
   championName: string; // "Aatrox" - repo folder name (from base skin entry in skin_ids)
 }
 
+// A chroma is a skin variant (e.g. "Battle Academia Briar (Pearl)") of a base
+// skin. Shares the parent's splash art but has its own colors and its own zip
+// in the LeagueSkins repo.
+export interface Chroma extends Skin {
+  parentName: string;
+  colors: string[]; // 1 hex for solid, 2 for gradient
+}
+
+// A base skin paired with its chroma variants. ChampionDetail renders one
+// card per group; chromas appear as small swatches inside the card.
+export interface SkinGroup {
+  base: Skin;
+  chromas: Chroma[];
+}
+
 export interface DownloadedSkin {
   champion_name: string;
   skin_name: string;

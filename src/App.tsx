@@ -8,7 +8,7 @@ import { usePatcher } from "./hooks/usePatcher";
 import { useDownloads } from "./hooks/useDownloads";
 import { useCustoms } from "./hooks/useCustoms";
 import { ensureChampions } from "./hooks/useChampions";
-import { ensureSkinIds, ensureRepoZips } from "./hooks/useSkinData";
+import { ensureSkinIds, ensureRepoZips, ensureChromaInfo } from "./hooks/useSkinData";
 import { useVersionCheck } from "./hooks/useVersionCheck";
 import StatusBar from "./components/StatusBar";
 import GamePathSelector from "./components/GamePathSelector";
@@ -65,11 +65,13 @@ function App() {
     });
   }, []);
 
-  // Preload caches
+  // Preload caches. ensureChromaInfo is best-effort: if it lands later, the
+  // useChromaReady hook in MySkins picks it up and re-groups.
   useEffect(() => {
     ensureChampions().catch(() => {});
     ensureSkinIds().catch(() => {});
     ensureRepoZips().catch(() => {});
+    ensureChromaInfo().catch(() => {});
   }, []);
 
   // Surface patcher errors as toast
