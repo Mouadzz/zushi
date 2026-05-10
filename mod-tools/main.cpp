@@ -1,3 +1,4 @@
+#include <csignal>
 #include <cstdio>
 #include <error.hpp>
 #include <fs.hpp>
@@ -308,6 +309,12 @@ static auto help(fs::path cmd) -> void {
 }
 
 int main(int argc, char** argv) {
+    // Don't let a broken stdout pipe (parent reader thread exited, etc.) kill us
+    // with SIGPIPE — make writes return EPIPE instead. Without this, fprintf to
+    // a closed pipe terminates the process by signal, surfacing in Tauri as
+    // "Patcher exited unexpectedly (code -1)".
+    std::signal(SIGPIPE, SIG_IGN);
+
     utility::set_binary_io();
     fmtlog::setHeaderPattern("[{l}] ");
     fmtlog::setLogFile(stdout, false);
