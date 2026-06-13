@@ -3,7 +3,6 @@ import type { PatcherStatus } from "../types";
 
 interface StatusBarProps {
   patcherStatus: PatcherStatus;
-  downloading?: string | null;
   skinCount: number;
   customCount: number;
   onApply: () => void;
@@ -40,7 +39,6 @@ function getStatusInfo(s: PatcherStatus): { label: string; dotClass: string; spi
 
 export default function StatusBar({
   patcherStatus,
-  downloading,
   skinCount,
   customCount,
   onApply,
@@ -49,20 +47,6 @@ export default function StatusBar({
   const { label, dotClass, spinner } = getStatusInfo(patcherStatus);
   const isActive =
     patcherStatus !== "Idle" && !(typeof patcherStatus === "object" && "Error" in patcherStatus);
-
-  const showDownload = downloading && patcherStatus === "Idle";
-  let displayLabel = label;
-  if (showDownload) {
-    if (downloading === "batch") {
-      displayLabel = "Preparing downloads...";
-    } else if (downloading.includes("(")) {
-      displayLabel = `Downloading ${downloading}`;
-    } else {
-      displayLabel = `Downloading ${downloading.split("/").pop()}...`;
-    }
-  }
-  const displayDot = showDownload ? "bg-gold-400 animate-pulse" : dotClass;
-  const showSpinner = showDownload || spinner;
 
   const totalSelected = skinCount + customCount;
   const canApply = totalSelected > 0 && !isActive;
@@ -76,15 +60,15 @@ export default function StatusBar({
 
   return (
     <footer className="border-border bg-charcoal-500 flex items-center gap-3 border-t px-4 py-2.5">
-      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${displayDot}`} />
-      {showSpinner && <Loader2 size={14} className="text-gold-400 shrink-0 animate-spin" />}
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dotClass}`} />
+      {spinner && <Loader2 size={14} className="text-gold-400 shrink-0 animate-spin" />}
       <span
         className={[
           "truncate text-sm",
-          isActive || showDownload ? "text-ink font-medium" : "text-ink-secondary",
+          isActive ? "text-ink font-medium" : "text-ink-secondary",
         ].join(" ")}
       >
-        {displayLabel}
+        {label}
       </span>
 
       <div className="ml-auto flex shrink-0 items-center gap-3">

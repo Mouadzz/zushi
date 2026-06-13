@@ -11,6 +11,7 @@ import { ensureChampions } from "./hooks/useChampions";
 import { ensureSkinIds, ensureRepoZips, ensureChromaInfo } from "./hooks/useSkinData";
 import { useVersionCheck } from "./hooks/useVersionCheck";
 import StatusBar from "./components/StatusBar";
+import DownloadBar from "./components/DownloadBar";
 import GamePathSelector from "./components/GamePathSelector";
 import ChampionGrid from "./components/ChampionGrid";
 import ChampionDetail from "./components/ChampionDetail";
@@ -128,6 +129,7 @@ function App() {
       return (
         <Customs
           customs={customs.customs}
+          patcherActive={patcher.isActive}
           onAdd={customs.addCustom}
           onRemove={customs.remove}
           onToggle={customs.toggle}
@@ -223,9 +225,10 @@ function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex flex-1 flex-col overflow-hidden">{renderContent()}</main>
 
+        <DownloadBar downloading={dl.downloading} />
+
         <StatusBar
           patcherStatus={patcher.status}
-          downloading={dl.downloading}
           skinCount={skinCount}
           customCount={customs.enabledCount}
           onApply={handleApply}
