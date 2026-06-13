@@ -21,11 +21,11 @@ export interface Champion {
 }
 
 export interface Skin {
-  id: string;       // "266007" - skin ID from skin_ids.json
+  id: string;       // "266007" - skin ID from skin_ids.json; keys the LeagueSkins repo lookup
   num: number;      // 7 - skinId % 1000, used for splash art URLs
-  name: string;     // "Blood Moon Aatrox" - exact name matching LeagueSkins repo folder
+  name: string;     // "Blood Moon Aatrox" - display name + local download folder name
   championId: string; // "Aatrox" - DDragon champion id for image URLs
-  championName: string; // "Aatrox" - repo folder name (from base skin entry in skin_ids)
+  championName: string; // "Aatrox" - local download folder name (from base skin entry in skin_ids)
 }
 
 export interface Chroma extends Skin {

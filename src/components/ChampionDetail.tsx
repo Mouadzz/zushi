@@ -82,7 +82,7 @@ function SkinCard({
   onDownloadGroup,
 }: {
   group: SkinGroup;
-  downloadKeyState: (championName: string, skinName: string) => {
+  downloadKeyState: (skin: Skin) => {
     downloaded: boolean;
     isDownloading: boolean;
     available: boolean;
@@ -91,7 +91,7 @@ function SkinCard({
   busy: boolean;
   onDownloadGroup: (group: SkinGroup) => void;
 }) {
-  const baseState = downloadKeyState(group.base.championName, group.base.name);
+  const baseState = downloadKeyState(group.base);
 
   return (
     <div
@@ -143,7 +143,7 @@ function SkinCard({
         {group.chromas.length > 0 && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1">
             {group.chromas.map((chroma) => {
-              const cs = downloadKeyState(chroma.championName, chroma.name);
+              const cs = downloadKeyState(chroma);
               return <ChromaSwatch key={chroma.id} chroma={chroma} available={cs.available} />;
             })}
           </div>
@@ -169,14 +169,13 @@ export default function ChampionDetail({
   );
   const allDownloaded = notDownloaded.length === 0 && skins.length > 0;
 
-  const downloadKeyState = (championName: string, skinName: string) => {
-    const dlKey = `${championName}/${skinName}`;
-    const stub = { championName, name: skinName } as Skin;
+  const downloadKeyState = (skin: Skin) => {
+    const dlKey = `${skin.championName}/${skin.name}`;
     return {
-      downloaded: isDownloaded(championName, skinName),
+      downloaded: isDownloaded(skin.championName, skin.name),
       isDownloading: downloading === dlKey,
-      available: isSkinAvailable(stub),
-      url: skinDownloadUrl(stub),
+      available: isSkinAvailable(skin),
+      url: skinDownloadUrl(skin),
     };
   };
 

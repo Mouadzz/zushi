@@ -10,7 +10,8 @@ const SKINS_JSON_URL =
   "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/skins.json";
 
 const SKIN_IDS_CACHE_KEY = "zushi:skin_ids";
-const REPO_ZIPS_CACHE_KEY = "zushi:repo_zips";
+// _v2 invalidates the stale name-based cache from older builds.
+const REPO_ZIPS_CACHE_KEY = "zushi:repo_files_v2";
 const CHROMAS_CACHE_KEY = "zushi:chromas";
 
 let skinIdsCache: Record<string, string> | null = null;
@@ -55,17 +56,19 @@ export function ensureRepoZips(): Promise<Map<string, string>> {
     .then((data: { tree: { path: string; type: string }[] }) => {
       const map = new Map<string, string>();
       for (const entry of data.tree) {
-        if (
-          entry.type === "blob" &&
-          entry.path.startsWith("skins/") &&
-          entry.path.endsWith(".zip")
-        ) {
-          // e.g. "skins/Akali/Headhunter Akali/Headhunter Akali.zip"
-          const parts = entry.path.split("/");
-          const filename = parts[parts.length - 1].replace(/\.zip$/, "");
-          const champion = parts[1];
-          map.set(`${champion}/${filename}`, entry.path);
-        }
+        if (entry.type !== "blob" || !entry.path.startsWith("skins/")) continue;
+        // Paths are id-based, e.g. "skins/222/222020/222025/222025.fantome".
+        // The filename stem is the skin id, matching skin_ids.json keys.
+        const filename = entry.path.split("/").pop() ?? "";
+        const ext = filename.endsWith(".fantome")
+          ? ".fantome"
+          : filename.endsWith(".zip")
+            ? ".zip"
+            : null;
+        if (!ext) continue;
+        const skinId = filename.slice(0, -ext.length);
+        if (!/^\d+$/.test(skinId)) continue;
+        map.set(skinId, entry.path);
       }
       repoZipsCache = map;
       setCache(REPO_ZIPS_CACHE_KEY, [...map.entries()]);
@@ -271,8 +274,7 @@ export function lookupSplashNum(skinName: string): number | null {
 export function skinDownloadUrl(skin: Skin): string | null {
   if (!repoZipsCache) return null;
 
-  const key = `${skin.championName}/${skin.name}`;
-  const repoPath = repoZipsCache.get(key);
+  const repoPath = repoZipsCache.get(skin.id);
   if (!repoPath) return null;
 
   const encoded = repoPath
@@ -284,8 +286,7 @@ export function skinDownloadUrl(skin: Skin): string | null {
 
 export function isSkinAvailable(skin: Skin): boolean {
   if (!repoZipsCache) return true; // optimistic before tree loads
-  const key = `${skin.championName}/${skin.name}`;
-  return repoZipsCache.has(key);
+  return repoZipsCache.has(skin.id);
 }
 
 export function useSkinData(champion: Champion | null) {

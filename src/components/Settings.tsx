@@ -37,9 +37,8 @@ export default function Settings({
   const [workSize, setWorkSize] = useState(0);
   const [cacheLoading, setCacheLoading] = useState(true);
   const [customsSize, setCustomsSize] = useState(0);
-  const [clearingSkins, setClearingSkins] = useState(false);
+  const [clearingContent, setClearingContent] = useState(false);
   const [clearingWork, setClearingWork] = useState(false);
-  const [clearingCustoms, setClearingCustoms] = useState(false);
 
   useEffect(() => {
     isEnabled()
@@ -103,16 +102,17 @@ export default function Settings({
     }
   };
 
-  const handleClearSkins = async () => {
-    setClearingSkins(true);
+  const handleClearContent = async () => {
+    setClearingContent(true);
     try {
-      await clearAllSkins();
+      await Promise.all([clearAllSkins(), clearAllCustoms()]);
       localStorage.removeItem("zushi_skin_selection");
-      await onSkinsCleared();
+      localStorage.removeItem("zushi_customs_enabled");
+      await Promise.all([onSkinsCleared(), onCustomsCleared()]);
     } catch {
       // ignore
     }
-    setClearingSkins(false);
+    setClearingContent(false);
     await refreshCache();
   };
 
@@ -127,19 +127,7 @@ export default function Settings({
     await refreshCache();
   };
 
-  const handleClearCustoms = async () => {
-    setClearingCustoms(true);
-    try {
-      await clearAllCustoms();
-      localStorage.removeItem("zushi_customs_enabled");
-      await onCustomsCleared();
-    } catch {
-      // ignore
-    }
-    setClearingCustoms(false);
-    await refreshCache();
-  };
-
+  const contentSize = skinsSize + customsSize;
   const totalSize = skinsSize + workSize + customsSize;
 
   return (
@@ -220,47 +208,22 @@ export default function Settings({
       </div>
 
       <div className="border-border divide-border divide-y rounded-lg border">
-        {/* Downloaded skins */}
+        {/* Skins & custom mods */}
         <div className="flex items-center justify-between px-4 py-3.5">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-ink text-sm">Downloaded Skins</span>
-            <span className="text-ink-muted text-xs">Skin .zip files saved locally</span>
+            <span className="text-ink text-sm">Skins &amp; Custom Mods</span>
+            <span className="text-ink-muted text-xs">Downloaded skins and imported mods</span>
           </div>
           <div className="flex shrink-0 items-center gap-4">
             <span className="text-ink-secondary min-w-16 text-right text-sm tabular-nums">
-              {cacheLoading ? "..." : formatSize(skinsSize)}
+              {cacheLoading ? "..." : formatSize(contentSize)}
             </span>
             <button
-              onClick={handleClearSkins}
-              disabled={clearingSkins || skinsSize === 0 || patcherActive}
+              onClick={handleClearContent}
+              disabled={clearingContent || contentSize === 0 || patcherActive}
               className="border-border text-ink-secondary hover:text-error hover:border-error/40 flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors disabled:pointer-events-none disabled:opacity-30"
             >
-              {clearingSkins ? (
-                <Loader2 size={13} strokeWidth={2} className="animate-spin" />
-              ) : (
-                <Trash2 size={13} strokeWidth={1.5} />
-              )}
-              Clear
-            </button>
-          </div>
-        </div>
-
-        {/* Custom mods */}
-        <div className="flex items-center justify-between px-4 py-3.5">
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-ink text-sm">Custom Mods</span>
-            <span className="text-ink-muted text-xs">Imported .zip and .fantome files</span>
-          </div>
-          <div className="flex shrink-0 items-center gap-4">
-            <span className="text-ink-secondary min-w-16 text-right text-sm tabular-nums">
-              {cacheLoading ? "..." : formatSize(customsSize)}
-            </span>
-            <button
-              onClick={handleClearCustoms}
-              disabled={clearingCustoms || customsSize === 0 || patcherActive}
-              className="border-border text-ink-secondary hover:text-error hover:border-error/40 flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors disabled:pointer-events-none disabled:opacity-30"
-            >
-              {clearingCustoms ? (
+              {clearingContent ? (
                 <Loader2 size={13} strokeWidth={2} className="animate-spin" />
               ) : (
                 <Trash2 size={13} strokeWidth={1.5} />
@@ -274,7 +237,7 @@ export default function Settings({
         <div className="flex items-center justify-between px-4 py-3.5">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="text-ink text-sm">Patcher Data</span>
-            <span className="text-ink-muted text-xs">Imported mods and overlay files</span>
+            <span className="text-ink-muted text-xs">Temporary overlay files, rebuilt on apply</span>
           </div>
           <div className="flex shrink-0 items-center gap-4">
             <span className="text-ink-secondary min-w-16 text-right text-sm tabular-nums">

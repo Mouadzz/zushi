@@ -6,12 +6,19 @@ import type { CustomMod } from "../types";
 
 interface CustomsProps {
   customs: CustomMod[];
+  patcherActive: boolean;
   onAdd: (path: string) => Promise<void>;
   onRemove: (name: string) => Promise<void>;
   onToggle: (name: string) => void;
 }
 
-export default function Customs({ customs, onAdd, onRemove, onToggle }: CustomsProps) {
+export default function Customs({
+  customs,
+  patcherActive,
+  onAdd,
+  onRemove,
+  onToggle,
+}: CustomsProps) {
   const [draggingOver, setDraggingOver] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +47,7 @@ export default function Customs({ customs, onAdd, onRemove, onToggle }: CustomsP
         const { type } = event.payload;
         if (type === "drop") {
           setDraggingOver(false);
+          if (patcherActive) return;
           const paths = (event.payload as { type: "drop"; paths: string[] }).paths;
           const zips = paths.filter((p) => {
             const lower = p.toLowerCase();
@@ -59,9 +67,10 @@ export default function Customs({ customs, onAdd, onRemove, onToggle }: CustomsP
     return () => {
       unlisten?.();
     };
-  }, [handleAdd]);
+  }, [handleAdd, patcherActive]);
 
   async function handleBrowse() {
+    if (patcherActive) return;
     const selected = await open({
       multiple: true,
       filters: [{ name: "Mod", extensions: ["zip", "fantome"] }],
@@ -87,23 +96,29 @@ export default function Customs({ customs, onAdd, onRemove, onToggle }: CustomsP
       <div
         onClick={handleBrowse}
         className={[
-          "border-border mx-4 mt-4 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 transition-all",
-          draggingOver
-            ? "border-gold-400 bg-gold-400/10"
-            : "hover:border-charcoal-50/30 hover:bg-charcoal-300/30",
+          "border-border mx-4 mt-4 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 transition-all",
+          patcherActive
+            ? "cursor-default opacity-40"
+            : draggingOver
+              ? "cursor-pointer border-gold-400 bg-gold-400/10"
+              : "hover:border-charcoal-50/30 hover:bg-charcoal-300/30 cursor-pointer",
         ].join(" ")}
       >
         <Upload
           size={18}
           strokeWidth={1.5}
-          className={draggingOver ? "text-gold-400" : "text-ink-muted"}
+          className={draggingOver && !patcherActive ? "text-gold-400" : "text-ink-muted"}
         />
         <p
-          className={`text-sm font-medium ${draggingOver ? "text-gold-400" : "text-ink-secondary"}`}
+          className={`text-sm font-medium ${draggingOver && !patcherActive ? "text-gold-400" : "text-ink-secondary"}`}
         >
-          {adding ? `Adding ${adding}...` : "Drop mods here"}
+          {patcherActive
+            ? "Stop the patcher to add mods"
+            : adding
+              ? `Adding ${adding}...`
+              : "Drop mods here"}
         </p>
-        <p className="text-ink-muted text-xs">or click to browse</p>
+        {!patcherActive && <p className="text-ink-muted text-xs">or click to browse</p>}
       </div>
 
       {error && (
@@ -123,12 +138,16 @@ export default function Customs({ customs, onAdd, onRemove, onToggle }: CustomsP
             {customs.map((custom) => (
               <div key={custom.name} className="relative">
                 <button
-                  onClick={() => onToggle(custom.name)}
+                  onClick={() => !patcherActive && onToggle(custom.name)}
+                  disabled={patcherActive}
                   className={[
-                    "relative h-24 w-36 cursor-pointer overflow-hidden rounded transition-all",
+                    "relative h-24 w-36 overflow-hidden rounded transition-all",
+                    patcherActive ? "cursor-default opacity-50" : "cursor-pointer",
                     custom.enabled
                       ? "ring-gold-400 ring-offset-charcoal-400 ring-2 ring-offset-1"
-                      : "ring-charcoal-50/20 hover:ring-charcoal-50/40 ring-1",
+                      : patcherActive
+                        ? "ring-charcoal-50/20 ring-1"
+                        : "ring-charcoal-50/20 hover:ring-charcoal-50/40 ring-1",
                   ].join(" ")}
                   title={custom.name}
                 >
@@ -155,13 +174,15 @@ export default function Customs({ customs, onAdd, onRemove, onToggle }: CustomsP
                   </div>
                 </button>
 
-                <button
-                  onClick={() => onRemove(custom.name)}
-                  className="bg-charcoal-500 hover:bg-error text-ink-muted absolute top-1.5 left-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full shadow transition-colors hover:text-white"
-                  title="Remove"
-                >
-                  <X size={10} strokeWidth={2.5} />
-                </button>
+                {!patcherActive && (
+                  <button
+                    onClick={() => onRemove(custom.name)}
+                    className="bg-charcoal-500 hover:bg-error text-ink-muted absolute top-1.5 left-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full shadow transition-colors hover:text-white"
+                    title="Remove"
+                  >
+                    <X size={10} strokeWidth={2.5} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
