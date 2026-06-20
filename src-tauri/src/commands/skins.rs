@@ -21,6 +21,17 @@ struct DownloadProgress {
     skin_name: String,
 }
 
+/// Skin names like "K/DA Kai'Sa" contain '/', which is a path separator.
+/// Encode it for on-disk folder/file names and decode when reading back,
+/// so the logical skin name stays intact everywhere else.
+fn encode_path(s: &str) -> String {
+    s.replace('/', "%2F")
+}
+
+fn decode_path(s: &str) -> String {
+    s.replace("%2F", "/")
+}
+
 fn skins_dir(app: &AppHandle) -> PathBuf {
     let dir = app
         .path()
@@ -50,10 +61,12 @@ pub async fn download_skin(
     let base = skins_dir(&app);
     flatten(
         tauri::async_runtime::spawn_blocking(move || {
-            let skin_dir = base.join(&champion_name).join(&skin_name);
+            let skin_dir = base
+                .join(encode_path(&champion_name))
+                .join(encode_path(&skin_name));
             fs::create_dir_all(&skin_dir).map_err(|e| e.to_string())?;
 
-            let zip_path = skin_dir.join(format!("{}.zip", &skin_name));
+            let zip_path = skin_dir.join(format!("{}.zip", encode_path(&skin_name)));
 
             let resp = ureq::get(&url)
                 .call()
@@ -90,12 +103,14 @@ pub async fn download_multiple_skins(
             let mut success_count = 0u32;
 
             for item in &items {
-                let skin_dir = base.join(&item.champion_name).join(&item.skin_name);
+                let skin_dir = base
+                    .join(encode_path(&item.champion_name))
+                    .join(encode_path(&item.skin_name));
                 if fs::create_dir_all(&skin_dir).is_err() {
                     continue;
                 }
 
-                let zip_path = skin_dir.join(format!("{}.zip", &item.skin_name));
+                let zip_path = skin_dir.join(format!("{}.zip", encode_path(&item.skin_name)));
 
                 let ok = (|| -> bool {
                     let resp = match ureq::get(&item.url).call() {
@@ -150,7 +165,8 @@ pub async fn list_downloaded_skins(app: AppHandle) -> Result<Vec<DownloadedSkin>
                 {
                     continue;
                 }
-                let champion_name = champion_entry.file_name().to_string_lossy().to_string();
+                let champion_dir_name = champion_entry.file_name().to_string_lossy().to_string();
+                let champion_name = decode_path(&champion_dir_name);
 
                 if let Ok(skin_entries) = fs::read_dir(champion_entry.path()) {
                     for skin_entry in skin_entries.flatten() {
@@ -161,13 +177,13 @@ pub async fn list_downloaded_skins(app: AppHandle) -> Result<Vec<DownloadedSkin>
                         {
                             continue;
                         }
-                        let skin_name = skin_entry.file_name().to_string_lossy().to_string();
-                        let zip_path = skin_entry.path().join(format!("{}.zip", &skin_name));
+                        let skin_dir_name = skin_entry.file_name().to_string_lossy().to_string();
+                        let zip_path = skin_entry.path().join(format!("{}.zip", &skin_dir_name));
 
                         if zip_path.exists() {
                             skins.push(DownloadedSkin {
                                 champion_name: champion_name.clone(),
-                                skin_name,
+                                skin_name: decode_path(&skin_dir_name),
                                 zip_path: zip_path.to_string_lossy().into_owned(),
                             });
                         }
@@ -190,12 +206,14 @@ pub async fn delete_downloaded_skin(
     let base = skins_dir(&app);
     flatten(
         tauri::async_runtime::spawn_blocking(move || {
-            let skin_dir = base.join(&champion_name).join(&skin_name);
+            let skin_dir = base
+                .join(encode_path(&champion_name))
+                .join(encode_path(&skin_name));
             if skin_dir.exists() {
                 fs::remove_dir_all(&skin_dir).map_err(|e| e.to_string())?;
             }
 
-            let champion_dir = base.join(&champion_name);
+            let champion_dir = base.join(encode_path(&champion_name));
             if champion_dir.exists() {
                 if champion_dir
                     .read_dir()

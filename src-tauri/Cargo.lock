@@ -5374,7 +5374,7 @@ checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[package]]
 name = "zushi"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "libc",
  "serde",
