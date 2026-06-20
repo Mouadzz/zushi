@@ -2,16 +2,42 @@ import { useState, useEffect, useMemo } from "react";
 import type { Champion } from "../types";
 import { getCached, setCache } from "../lib/cache";
 
-const DDRAGON_VERSION = "15.4.1";
-export const DDRAGON_BASE = `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}`;
+// Fallback when the version lookup fails; updated to the live latest at runtime.
+const FALLBACK_VERSION = "16.12.1";
+const VERSIONS_URL = "https://ddragon.leagueoflegends.com/api/versions.json";
 
-const CACHE_KEY = "zushi:champions";
+const CACHE_KEY = "zushi:champions_v2";
+const VERSION_CACHE_KEY = "zushi:ddragon_version";
+
+let ddragonVersion = FALLBACK_VERSION;
+let versionResolved: Promise<string> | null = null;
 
 // Module-level cache so data survives component re-mounts
 let championsCache: Champion[] | null = null;
 
+function ensureVersion(): Promise<string> {
+  if (versionResolved) return versionResolved;
+
+  const cached = getCached<string>(VERSION_CACHE_KEY);
+  if (cached) {
+    ddragonVersion = cached;
+    versionResolved = Promise.resolve(cached);
+    return versionResolved;
+  }
+
+  versionResolved = fetch(VERSIONS_URL)
+    .then((res) => (res.ok ? res.json() : Promise.reject()))
+    .then((versions: string[]) => {
+      if (versions[0]) ddragonVersion = versions[0];
+      setCache(VERSION_CACHE_KEY, ddragonVersion);
+      return ddragonVersion;
+    })
+    .catch(() => ddragonVersion);
+  return versionResolved;
+}
+
 export function championAvatar(id: string): string {
-  return `${DDRAGON_BASE}/img/champion/${id}.png`;
+  return `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/champion/${id}.png`;
 }
 
 export function splashUrl(championId: string, skinNum: number): string {
@@ -21,30 +47,32 @@ export function splashUrl(championId: string, skinNum: number): string {
 export function ensureChampions(): Promise<Champion[]> {
   if (championsCache) return Promise.resolve(championsCache);
 
-  const cached = getCached<Champion[]>(CACHE_KEY);
-  if (cached) {
-    championsCache = cached;
-    return Promise.resolve(cached);
-  }
+  return ensureVersion().then(() => {
+    const cached = getCached<Champion[]>(CACHE_KEY);
+    if (cached) {
+      championsCache = cached;
+      return cached;
+    }
 
-  return fetch(`${DDRAGON_BASE}/data/en_US/champion.json`)
-    .then((res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    })
-    .then((json) => {
-      const list: Champion[] = Object.values(json.data).map((c: any) => ({
-        id: c.id,
-        key: c.key,
-        name: c.name,
-        title: c.title,
-        tags: c.tags,
-      }));
-      list.sort((a, b) => a.name.localeCompare(b.name));
-      championsCache = list;
-      setCache(CACHE_KEY, list);
-      return list;
-    });
+    return fetch(`https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/data/en_US/champion.json`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => {
+        const list: Champion[] = Object.values(json.data).map((c: any) => ({
+          id: c.id,
+          key: c.key,
+          name: c.name,
+          title: c.title,
+          tags: c.tags,
+        }));
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        championsCache = list;
+        setCache(CACHE_KEY, list);
+        return list;
+      });
+  });
 }
 
 export function findChampionByName(name: string): Champion | undefined {
