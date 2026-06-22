@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getCached, setCache } from "../lib/cache";
+import { getCached, getStale, setCache } from "../lib/cache";
 import type { Champion, Skin, Chroma, SkinGroup } from "../types";
 
 const SKIN_IDS_URL =
@@ -36,6 +36,14 @@ export function ensureSkinIds(): Promise<Record<string, string>> {
       skinIdsCache = data;
       setCache(SKIN_IDS_CACHE_KEY, data);
       return data;
+    })
+    .catch((err) => {
+      const stale = getStale<Record<string, string>>(SKIN_IDS_CACHE_KEY);
+      if (stale) {
+        skinIdsCache = stale;
+        return stale;
+      }
+      throw err;
     });
 }
 
@@ -73,6 +81,14 @@ export function ensureRepoZips(): Promise<Map<string, string>> {
       repoZipsCache = map;
       setCache(REPO_ZIPS_CACHE_KEY, [...map.entries()]);
       return map;
+    })
+    .catch((err) => {
+      const stale = getStale<[string, string][]>(REPO_ZIPS_CACHE_KEY);
+      if (stale) {
+        repoZipsCache = new Map(stale);
+        return repoZipsCache;
+      }
+      throw err;
     });
 }
 

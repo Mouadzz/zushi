@@ -10,10 +10,21 @@ export function getCached<T>(key: string, ttl = DEFAULT_TTL): T | null {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const entry: CacheEntry<T> = JSON.parse(raw);
-    if (Date.now() - entry.timestamp > ttl) {
-      localStorage.removeItem(key);
-      return null;
-    }
+    // Keep expired entries so getStale() can serve them as a fallback when
+    // the network is down or rate-limited.
+    if (Date.now() - entry.timestamp > ttl) return null;
+    return entry.data;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns cached data regardless of age. Use as a fallback when a fetch fails. */
+export function getStale<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const entry: CacheEntry<T> = JSON.parse(raw);
     return entry.data;
   } catch {
     return null;
