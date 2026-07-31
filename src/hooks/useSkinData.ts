@@ -138,6 +138,11 @@ export function getSkinsForChampion(champion: Champion, skinIds: Record<string, 
     const num = numericId % 1000;
     if (num === 0) continue;
 
+    // Skip chromas of the default skin (e.g. "Steel Blitzcrank") — not real,
+    // applicable skins and they have no card to group under. See grouping below.
+    const chromaInfo = chromaInfoCache?.get(numericId);
+    if (chromaInfo && chromaInfo.parentId % 1000 === 0) continue;
+
     skins.push({
       id,
       num,

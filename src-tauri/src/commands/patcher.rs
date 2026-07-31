@@ -3,8 +3,17 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use tauri::{AppHandle, Manager, State};
+
+/// Serializes patcher setup (kill-old → import → mkoverlay → spawn → record pid).
+/// Two live mod-tools tracers on the same game task port make the kernel SIGSEGV
+/// the new one, so only one apply may be in its setup phase at a time. Held until
+/// just before the long monitoring wait, then released.
+fn apply_setup_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 fn work_dir(app: &AppHandle) -> PathBuf {
     let dir = app
@@ -92,21 +101,6 @@ fn start_apply(
         return Err("No skins selected".to_string());
     }
 
-    // Auto-stop any existing patcher: signal it to exit by closing its stdin.
-    // We capture its pid so the spawned worker thread can wait for it to *fully*
-    // die before doing anything that touches the game (ptrace, mach_vm_*).
-    // Otherwise: two not-fully-reaped mod-tools processes both holding mach
-    // task ports to the same target → kernel SIGSEGVs the new tracer on macOS.
-    let old_patcher_pid: Option<u32> = {
-        let mut s = state.lock().map_err(|e| e.to_string())?;
-        let stdin = s.patcher_stdin.take();
-        if let Some(mut pipe) = stdin {
-            pipe.write_all(b"\n").ok();
-            drop(pipe);
-        }
-        s.patcher_pid
-    };
-
     let game_path = {
         let s = state.lock().map_err(|e| e.to_string())?;
         s.game_path
@@ -119,6 +113,8 @@ fn start_apply(
         return Err(format!("mod-tools not found at {:?}", binary));
     }
 
+    // Bump the generation up front so any apply already waiting for the setup
+    // lock knows it has been superseded and can bail without spawning a patcher.
     let gen = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.patcher_gen += 1;
@@ -129,23 +125,59 @@ fn start_apply(
     let base = work_dir(&app);
 
     std::thread::spawn(move || {
-        // Wait for the old mod-tools process to be fully reaped by the kernel
-        // before we touch the game. kill(pid, 0) is a no-op probe: returns 0
-        // while the pid still exists, -1 (ESRCH) once it's gone. Cap at 5s so
-        // a stuck process doesn't deadlock the new apply forever.
-        if let Some(pid) = old_patcher_pid {
-            let pid_i = pid as i32;
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            while std::time::Instant::now() < deadline {
-                let alive = unsafe { libc::kill(pid_i, 0) } == 0;
-                if !alive {
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(20));
+        // Serialize the whole setup so two patchers can never run at once. This
+        // blocks until any in-flight apply has finished spawning and *recorded*
+        // its pid — only then can we see and kill it. Released before monitoring.
+        let setup_guard = apply_setup_lock().lock().unwrap_or_else(|e| e.into_inner());
+
+        // A newer apply superseded us while we waited for the lock — let it win.
+        if let Ok(s) = state.lock() {
+            if s.patcher_gen != gen {
+                return;
             }
         }
 
-        if let Err(e) = do_apply_skins_bg(binary, base, game_path, zip_paths, state.clone(), gen) {
+        // Stop the currently-tracked patcher: close its stdin (graceful abort),
+        // then confirm it is fully dead before we touch the game. pid is read
+        // here (under the setup lock) so it reflects the real running patcher.
+        let old_pid = match state.lock() {
+            Ok(mut s) => {
+                if let Some(mut pipe) = s.patcher_stdin.take() {
+                    pipe.write_all(b"\n").ok();
+                    drop(pipe);
+                }
+                s.patcher_pid.take()
+            }
+            Err(_) => None,
+        };
+        if let Some(pid) = old_pid {
+            let pid_i = pid as i32;
+            // kill(pid, 0) probes existence: 0 while alive, -1 (ESRCH) once gone.
+            let wait_gone = |timeout_ms: u64| -> bool {
+                let deadline =
+                    std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+                loop {
+                    if unsafe { libc::kill(pid_i, 0) } != 0 {
+                        return true;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        return false;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+            };
+            if !wait_gone(3000) {
+                unsafe { libc::kill(pid_i, libc::SIGTERM) };
+                if !wait_gone(1500) {
+                    unsafe { libc::kill(pid_i, libc::SIGKILL) };
+                    wait_gone(2000);
+                }
+            }
+        }
+
+        if let Err(e) =
+            do_apply_skins_bg(binary, base, game_path, zip_paths, state.clone(), gen, setup_guard)
+        {
             if let Ok(mut s) = state.lock() {
                 if s.patcher_gen == gen {
                     s.patcher_status = PatcherStatus::Error(e);
@@ -166,6 +198,7 @@ fn do_apply_skins_bg(
     zip_paths: Vec<String>,
     state: Arc<Mutex<AppState>>,
     gen: u64,
+    setup_guard: MutexGuard<'static, ()>,
 ) -> Result<(), String> {
     let installed_dir = base.join("installed");
     let overlay_dir = base.join("overlay");
@@ -249,16 +282,21 @@ fn do_apply_skins_bg(
         .spawn()
         .map_err(|e| format!("Failed to start patcher: {}", e))?;
 
+    // Record pid/stdin unconditionally (even if a newer apply just superseded us
+    // while we held the setup lock): a superseding apply must be able to find and
+    // kill this patcher. The generation guard elsewhere keeps stale status/cleanup
+    // from clobbering the newer patcher.
     let child_pid = child.id();
     let stdin = child.stdin.take();
-    {
-        if let Ok(mut s) = state.lock() {
-            if s.patcher_gen == gen {
-                s.patcher_stdin = stdin;
-                s.patcher_pid = Some(child_pid);
-            }
-        }
+    if let Ok(mut s) = state.lock() {
+        s.patcher_stdin = stdin;
+        s.patcher_pid = Some(child_pid);
     }
+
+    // Setup is done and the pid is recorded — release the lock so a queued apply
+    // can now proceed (it will kill this patcher first). Everything below is just
+    // long-running monitoring.
+    drop(setup_guard);
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();

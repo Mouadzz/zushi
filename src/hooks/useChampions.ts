@@ -6,7 +6,7 @@ import { getCached, setCache } from "../lib/cache";
 const FALLBACK_VERSION = "16.12.1";
 const VERSIONS_URL = "https://ddragon.leagueoflegends.com/api/versions.json";
 
-const CACHE_KEY = "zushi:champions_v2";
+const CACHE_KEY = "zushi:champions_v3";
 const VERSION_CACHE_KEY = "zushi:ddragon_version";
 
 let ddragonVersion = FALLBACK_VERSION;
@@ -60,13 +60,18 @@ export function ensureChampions(): Promise<Champion[]> {
         return res.json();
       })
       .then((json) => {
-        const list: Champion[] = Object.values(json.data).map((c: any) => ({
-          id: c.id,
-          key: c.key,
-          name: c.name,
-          title: c.title,
-          tags: c.tags,
-        }));
+        const list: Champion[] = Object.values(json.data)
+          // Skip Riot's "Classic"/Jade duplicate champions. They mirror real
+          // champions but have no skins in the repo. No API flag marks them, so
+          // match either signal: the reserved key block (60001+) or the id prefix.
+          .filter((c: any) => parseInt(c.key, 10) < 60000 && !c.id.startsWith("Jade_"))
+          .map((c: any) => ({
+            id: c.id,
+            key: c.key,
+            name: c.name,
+            title: c.title,
+            tags: c.tags,
+          }));
         list.sort((a, b) => a.name.localeCompare(b.name));
         championsCache = list;
         setCache(CACHE_KEY, list);
