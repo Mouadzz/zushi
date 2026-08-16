@@ -5,6 +5,14 @@
 #include <fs.hpp>
 
 namespace lol::patcher {
+    /// Writes one diagnostic line to stderr, which Zushi captures and echoes.
+    void patch_log(char const* fmt, ...) noexcept __attribute__((format(printf, 1, 2)));
+
+    /// Resumes a game frozen by Process::Suspend(). Call from a termination
+    /// handler: a suspend count outlives the process that took it, so dying
+    /// mid-patch would otherwise leave the game frozen for good.
+    void emergency_resume() noexcept;
+
     enum Message {
         M_WAIT_START,
         M_FOUND,

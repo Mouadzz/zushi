@@ -3,12 +3,12 @@
 
 #    include "process.hpp"
 // do not reoder
+#    include <atomic>
+#    include <cstdarg>
 #    include <libproc.h>
 #    include <mach/mach.h>
 #    include <mach/mach_traps.h>
 #    include <mach/mach_vm.h>
-#    include <sys/ptrace.h>
-#    include <sys/wait.h>
 #    include <unistd.h>
 
 using namespace lol;
@@ -204,25 +204,40 @@ auto Process::AllocateMemory(size_t size) const -> void* {
     return (void*)address;
 }
 
-auto Process::PtraceAttach() const -> void {
-    // PT_ATTACH is deprecated on macOS in favor of PT_ATTACHEXC, but in this
-    // codebase PT_ATTACHEXC actually crashes inside __ptrace on macOS 26. The
-    // deprecation warning is acknowledged; we stay on PT_ATTACH because it
-    // works. The real reliability gain is in the caller: always PtraceDetach
-    // after a successful attach, even if the patch step throws.
-    if (ptrace(PT_ATTACH, pid_, nullptr, 0) == -1) {
-        lol_throw_msg("ptrace PT_ATTACH (pid: {}): errno {}", pid_, errno);
-    }
-    int status = 0;
-    if (waitpid(pid_, &status, WUNTRACED) == -1) {
-        ptrace(PT_DETACH, pid_, (caddr_t)1, 0);
-        lol_throw_msg("waitpid (pid: {}): errno {}", pid_, errno);
-    }
+// Patcher diagnostics go to stderr, which Zushi already captures and echoes.
+void lol::patcher::patch_log(char const* fmt, ...) noexcept {
+    std::fprintf(stderr, "[patcher] ");
+    va_list args;
+    va_start(args, fmt);
+    std::vfprintf(stderr, fmt, args);
+    va_end(args);
+    std::fputc('\n', stderr);
+    std::fflush(stderr);
 }
 
-auto Process::PtraceDetach() const -> void {
-    if (ptrace(PT_DETACH, pid_, (caddr_t)1, 0) == -1) {
-        lol_throw_msg("ptrace PT_DETACH (pid: {}): errno {}", pid_, errno);
+// Task currently frozen by Suspend(), so a termination signal can thaw it. If
+// the patcher died in the middle of patching, the game would otherwise stay
+// suspended forever: unlike a ptrace attachment, a suspend count is not
+// released when the process holding it goes away.
+static std::atomic<mach_port_t> g_suspended_task = {};
+
+auto Process::Suspend() const -> void {
+    auto const task = (task_t)(uintptr_t)handle_;
+    if (auto const err = task_suspend(task)) {
+        lol_throw_msg("task_suspend: {:#x}", (std::uint32_t)err);
+    }
+    g_suspended_task.store(task, std::memory_order_release);
+}
+
+auto Process::Resume() const noexcept -> void {
+    auto const task = (task_t)(uintptr_t)handle_;
+    g_suspended_task.store(0, std::memory_order_release);
+    task_resume(task);
+}
+
+void lol::patcher::emergency_resume() noexcept {
+    if (auto const task = g_suspended_task.exchange(0, std::memory_order_acq_rel)) {
+        task_resume(task);
     }
 }
 
