@@ -10,7 +10,9 @@
 #include <utility/zip.hpp>
 #include <wad/archive.hpp>
 #include <wad/index.hpp>
+#include <chrono>
 #include <thread>
+#include <unistd.h>
 #include <unordered_set>
 
 using namespace lol;
@@ -246,18 +248,27 @@ static auto mod_runoverlay(fs::path overlay, fs::path config_file, fs::path game
         setbuf(stdin, nullptr);
         for (;;) {
             int c = fgetc(stdin);
-            if (c == '\n' && !*lock) {
-                fflush(stdout);
-                exit(0);
+            if (c != '\n' && c != -1) continue;
+            patcher::patch_log("runoverlay: shutdown requested (%s), patch_in_flight=%s",
+                               c == -1 ? "stdin EOF" : "newline",
+                               *lock ? "YES - waiting" : "no");
+            // Abort requested (newline), or the parent dropped the pipe (EOF).
+            // Either way, never tear down while a patch is in flight: the game
+            // is suspended for that window, and a suspend count is not released
+            // when the holder exits, so leaving now would freeze the game for
+            // good. Wait for the patch to land.
+            while (*lock) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
-            if (c == -1) {
-                exit(0);
-            }
+            patcher::patch_log("runoverlay: exiting now");
+            fflush(stdout);
+            exit(0);
         }
     });
     thread.detach();
 
     fmtlog::setLogFile(stdout, false);
+    patcher::patch_log("runoverlay: START overlay=%s game=%s", overlay.c_str(), game.c_str());
     auto old_msg = patcher::M_DONE;
     try {
         patcher::run(
@@ -320,6 +331,22 @@ int main(int argc, char** argv) {
         sigemptyset(&sa.sa_mask);
         sa.sa_flags = 0;
         sigaction(SIGPIPE, &sa, nullptr);
+    }
+
+    // Patching freezes the game with task_suspend. A suspend count is not
+    // released when the holder dies, so being terminated mid-patch would leave
+    // the game frozen for good — thaw it before going away.
+    {
+        struct sigaction sa = {};
+        sa.sa_handler = [](int sig) {
+            patcher::emergency_resume();
+            _exit(128 + sig);
+        };
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sigaction(SIGTERM, &sa, nullptr);
+        sigaction(SIGINT, &sa, nullptr);
+        sigaction(SIGHUP, &sa, nullptr);
     }
 
     utility::set_binary_io();

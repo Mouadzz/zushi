@@ -3,6 +3,8 @@
 #include <fs.hpp>
 #include <optional>
 
+#include <patcher/patcher.hpp>
+
 namespace lol::patcher {
     template <typename T>
     struct Ptr;
@@ -90,8 +92,11 @@ namespace lol::patcher {
 
         auto AllocateMemory(size_t size) const -> void *;
 
-        auto PtraceAttach() const -> void;
-        auto PtraceDetach() const -> void;
+        /// Freezes / unfreezes every thread via the task port. Unlike ptrace
+        /// this does not make us a debugger, so League's deny-attach guard is
+        /// never triggered.
+        auto Suspend() const -> void;
+        auto Resume() const noexcept -> void;
 
         template <typename T>
         inline auto TryRead(Ptr<T> address) const noexcept -> std::optional<T> {

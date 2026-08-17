@@ -175,6 +175,17 @@ static PtrStorage find_wad_verify(const uint8_t* text_beg, const uint8_t* text_e
     return bl_pc + (int64_t)offset * 4;
 }
 
+// Runs one patch step, naming it in the log if the kernel rejects it.
+template <typename F>
+static auto patch_step(char const* what, F&& step) -> void {
+    try {
+        step();
+    } catch (std::exception const& e) {
+        patch_log("patch step FAILED [%s]: %s", what, e.what());
+        throw;
+    }
+}
+
 struct Context {
     std::uint64_t off_wad_verify = {};
     std::uint64_t off_fopen_ptr = {};
@@ -232,15 +243,18 @@ struct Context {
         payload_wad_verify.fopen_hook_ptr = (PtrStorage)ptr_fopen_hook;
 
         // Write shellcode to newly allocated memory (not code-signed).
+        // Each step is logged on failure: without a debugger attached the
+        // kernel may refuse to make memory executable in another process, and
+        // the log needs to say exactly which call was rejected.
         ptr_fopen_hook_addr = (PtrStorage)ptr_fopen_hook;
-        process.MarkWritable(ptr_fopen_hook);
-        process.Write(ptr_fopen_hook, payload_fopen);
-        process.MarkExecutable(ptr_fopen_hook);
+        patch_step("hook: mark writable", [&] { process.MarkWritable(ptr_fopen_hook); });
+        patch_step("hook: write payload", [&] { process.Write(ptr_fopen_hook, payload_fopen); });
+        patch_step("hook: mark executable", [&] { process.MarkExecutable(ptr_fopen_hook); });
 
-        // Write wad_verify bypass (modifies __TEXT.__text - works with CS_DEBUGGED).
-        process.MarkWritable(ptr_wad_verify);
-        process.Write(ptr_wad_verify, payload_wad_verify);
-        process.MarkExecutable(ptr_wad_verify);
+        // Write wad_verify bypass (modifies __TEXT.__text).
+        patch_step("wad_verify: mark writable", [&] { process.MarkWritable(ptr_wad_verify); });
+        patch_step("wad_verify: write bypass", [&] { process.Write(ptr_wad_verify, payload_wad_verify); });
+        patch_step("wad_verify: mark executable", [&] { process.MarkExecutable(ptr_wad_verify); });
     }
 };
 
@@ -297,6 +311,7 @@ auto patcher::run(std::function<void(Message, char const*)> update,
                 if (process.TryReadMemory((void*)(uintptr_t)ptr_wad_verify, probe, sizeof(probe))
                     && std::memcmp(probe, expected.return_true, sizeof(probe)) == 0) {
                     // Already patched — just wait for this game to exit
+                    patch_log("pid=%u already patched, waiting for exit", pid);
                     last_patched_pid = pid;
                     update(M_WAIT_EXIT, "");
                     run_until_or(
@@ -311,10 +326,23 @@ auto patcher::run(std::function<void(Message, char const*)> update,
 
             update(M_PATCH, "");
 
-            // Phase 1: Freeze process, write shellcode + wad_verify bypass
-            process.PtraceAttach();
-            ctx.patch(process);
-            process.PtraceDetach();
+            // Phase 1: Freeze process, write shellcode + wad_verify bypass.
+            //
+            // Freezing is done with task_suspend rather than ptrace. League
+            // denies debugger attachment within milliseconds of launching, and
+            // the kernel answers an attach attempt by killing the caller, so
+            // ptrace is not usable here at all. task_suspend goes through the
+            // task port we already hold and never makes us a debugger.
+            process.Suspend();
+            {
+                struct ResumeGuard {
+                    Process const& process;
+                    ~ResumeGuard() noexcept { process.Resume(); }
+                } resume_guard{process};
+
+                ctx.patch(process);
+            }
+            patch_log("patched pid=%u", pid);
 
             // Phase 2: Wait for dyld to resolve fopen lazy binding, then overwrite
             // with our hook. macOS 26 eagerly resolves lazy bindings after process
@@ -350,8 +378,7 @@ auto patcher::run(std::function<void(Message, char const*)> update,
             throw;  // user-initiated abort: propagate so mod_runoverlay can clean up
         } catch (std::exception const& e) {
             last_patched_pid = pid;  // don't hot-spin on the same broken PID
-            std::fprintf(stderr, "[patcher] iteration failed for pid=%u: %s\n", pid, e.what());
-            std::fflush(stderr);
+            patch_log("failed for pid=%u: %s", pid, e.what());
             // Fall through to next iteration — patcher stays alive and keeps watching.
         }
     }
