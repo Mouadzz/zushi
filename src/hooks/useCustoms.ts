@@ -43,7 +43,7 @@ export function useCustoms() {
   const addCustom = useCallback(
     async (srcPath: string) => {
       const fileName = srcPath.split("/").pop() ?? srcPath;
-      const name = fileName.replace(/\.zip$/i, "");
+      const name = fileName.replace(/\.(zip|fantome)$/i, "");
       setError(null);
       const entry = await importCustom(srcPath, name);
       // Auto-enable on add
@@ -53,6 +53,12 @@ export function useCustoms() {
         saveEnabled(next);
         return next;
       });
+      // Show it immediately so it can't be applied before the refresh lists it.
+      setCustoms((prev) =>
+        prev.some((c) => c.name === entry.name)
+          ? prev
+          : [...prev, { ...entry, enabled: true }].sort((a, b) => a.name.localeCompare(b.name))
+      );
       await refresh();
     },
     [refresh]
@@ -87,7 +93,10 @@ export function useCustoms() {
 
   const clearError = useCallback(() => setError(null), []);
 
-  const enabledPaths = customs.filter((c) => c.enabled).map((c) => c.file_path);
+  // Derive from the `enabled` Set (source of truth), not the mirrored
+  // `c.enabled` which can be one render behind — otherwise a just-enabled
+  // custom can be missing from the paths sent to apply.
+  const enabledPaths = customs.filter((c) => enabled.has(c.name)).map((c) => c.file_path);
   const enabledCount = enabledPaths.length;
 
   return { customs, addCustom, remove, toggle, refresh, enabledPaths, enabledCount, error, clearError };

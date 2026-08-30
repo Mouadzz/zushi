@@ -46,12 +46,22 @@ pub async fn import_custom(
             }
 
             // Sanitize name
-            let safe_name: String = name
+            let mut safe_name: String = name
                 .chars()
                 .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == ' ' || *c == '.')
                 .collect::<String>()
                 .trim()
                 .to_string();
+
+            // Defense: strip a trailing archive extension so we never produce
+            // "Name.fantome.fantome" if the display name still carries one.
+            for suffix in [".fantome", ".zip"] {
+                if safe_name.to_lowercase().ends_with(suffix) {
+                    safe_name.truncate(safe_name.len() - suffix.len());
+                    safe_name = safe_name.trim().to_string();
+                    break;
+                }
+            }
 
             if safe_name.is_empty() {
                 return Err("Invalid mod name".to_string());
