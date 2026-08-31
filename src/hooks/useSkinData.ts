@@ -18,6 +18,28 @@ let skinIdsCache: Record<string, string> | null = null;
 let repoZipsCache: Map<string, string> | null = null;
 let chromaInfoCache: Map<number, { colors: string[]; parentId: number }> | null = null;
 
+// Reverse indices over skinIdsCache so name-based lookups are O(1) instead of
+// scanning all ~9k entries on every call (My Skins does this per skin, per render).
+let skinNameToId: Map<string, string> | null = null;
+let skinChampNameToId: Map<string, string> | null = null;
+let indexedFrom: Record<string, string> | null = null;
+
+function ensureSkinIndexes(): void {
+  if (!skinIdsCache) return;
+  if (indexedFrom === skinIdsCache && skinNameToId) return;
+  const nameToId = new Map<string, string>();
+  const champNameToId = new Map<string, string>();
+  for (const [id, name] of Object.entries(skinIdsCache)) {
+    if (!nameToId.has(name)) nameToId.set(name, id);
+    const champKey = Math.floor(parseInt(id, 10) / 1000);
+    const key = `${champKey}:${name}`;
+    if (!champNameToId.has(key)) champNameToId.set(key, id);
+  }
+  skinNameToId = nameToId;
+  skinChampNameToId = champNameToId;
+  indexedFrom = skinIdsCache;
+}
+
 export function ensureSkinIds(): Promise<Record<string, string>> {
   if (skinIdsCache) return Promise.resolve(skinIdsCache);
 
@@ -212,23 +234,16 @@ export function lookupChromaInfo(
   skinName: string
 ): { colors: string[]; parentName: string } | null {
   if (!skinIdsCache || !chromaInfoCache) return null;
+  ensureSkinIndexes();
 
-  let foundId: number | null = null;
-  for (const [id, name] of Object.entries(skinIdsCache)) {
-    if (name === skinName) {
-      foundId = parseInt(id, 10);
-      break;
-    }
-  }
-  if (foundId === null) return null;
+  const foundIdStr = skinNameToId!.get(skinName);
+  if (foundIdStr === undefined) return null;
 
-  const info = chromaInfoCache.get(foundId);
+  const info = chromaInfoCache.get(parseInt(foundIdStr, 10));
   if (!info) return null;
 
-  const parentEntry = Object.entries(skinIdsCache).find(
-    ([id]) => parseInt(id, 10) === info.parentId
-  );
-  const parentName = parentEntry?.[1] ?? skinName.replace(/\s+\([^)]+\)$/, "");
+  // skinIdsCache is already id→name, so the parent name is a direct lookup.
+  const parentName = skinIdsCache[String(info.parentId)] ?? skinName.replace(/\s+\([^)]+\)$/, "");
 
   return { colors: info.colors, parentName };
 }
@@ -243,16 +258,10 @@ export function getSplashNum(skin: Skin): number {
   const match = skin.name.match(/^(.+?)\s+\([^)]+\)$/);
   if (!match) return skin.num;
 
-  const baseName = match[1];
+  ensureSkinIndexes();
   const champKey = Math.floor(parseInt(skin.id, 10) / 1000);
-
-  for (const [id, name] of Object.entries(skinIdsCache)) {
-    if (name === baseName && Math.floor(parseInt(id, 10) / 1000) === champKey) {
-      return parseInt(id, 10) % 1000;
-    }
-  }
-
-  return skin.num;
+  const baseId = skinChampNameToId!.get(`${champKey}:${match[1]}`);
+  return baseId !== undefined ? parseInt(baseId, 10) % 1000 : skin.num;
 }
 
 /**
@@ -261,31 +270,21 @@ export function getSplashNum(skin: Skin): number {
  */
 export function lookupSplashNum(skinName: string): number | null {
   if (!skinIdsCache) return null;
+  ensureSkinIndexes();
 
-  let foundId: string | null = null;
-  for (const [id, name] of Object.entries(skinIdsCache)) {
-    if (name === skinName) {
-      foundId = id;
-      break;
-    }
-  }
-  if (!foundId) return null;
+  const foundId = skinNameToId!.get(skinName);
+  if (foundId === undefined) return null;
 
   const champKey = Math.floor(parseInt(foundId, 10) / 1000);
-  const skinNum = parseInt(foundId, 10) % 1000;
 
-  // Check if this is a chroma: "BaseName (Variant)"
+  // Chroma ("BaseName (Variant)") resolves to its base skin's num.
   const match = skinName.match(/^(.+?)\s+\([^)]+\)$/);
   if (match) {
-    const baseName = match[1];
-    for (const [id, name] of Object.entries(skinIdsCache)) {
-      if (name === baseName && Math.floor(parseInt(id, 10) / 1000) === champKey) {
-        return parseInt(id, 10) % 1000;
-      }
-    }
+    const baseId = skinChampNameToId!.get(`${champKey}:${match[1]}`);
+    if (baseId !== undefined) return parseInt(baseId, 10) % 1000;
   }
 
-  return skinNum;
+  return parseInt(foundId, 10) % 1000;
 }
 
 /**

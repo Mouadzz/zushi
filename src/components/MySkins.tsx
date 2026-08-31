@@ -1,22 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Layers, Check, Info, X, Search } from "lucide-react";
 import { splashUrl, findChampionByName, championAvatar } from "../hooks/useChampions";
 import { lookupSplashNum, lookupChromaInfo, ensureChromaInfo } from "../hooks/useSkinData";
 import type { DownloadedSkin } from "../types";
 
-function useChromaReady() {
-  const [, setTick] = useState(0);
+function useChromaReady(): boolean {
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     let cancelled = false;
     ensureChromaInfo()
       .then(() => {
-        if (!cancelled) setTick((n) => n + 1);
+        if (!cancelled) setReady(true);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
+  return ready;
 }
 
 // base is null when the user only owns chromas of this base.
@@ -97,7 +98,7 @@ export default function MySkins({
   onSelectionChange,
   onDelete,
 }: MySkinsProps) {
-  useChromaReady(); // re-render once Community Dragon chroma data lands
+  const chromaReady = useChromaReady(); // re-render once Community Dragon chroma data lands
 
   const toggleSkin = (championName: string, skinName: string) => {
     if (patcherActive) return;
@@ -134,6 +135,41 @@ export default function MySkins({
   const selectedCount = Object.keys(selection).length;
   const [search, setSearch] = useState("");
 
+  // Grouping scans the ~9k skin database per skin, so memoize it on downloads
+  // (and chroma readiness) instead of rebuilding on every search/selection render.
+  const grouped = useMemo(() => {
+    void chromaReady; // recompute once Community Dragon chroma data lands
+    const map = new Map<string, DownloadGroup[]>();
+    for (const skin of downloads) {
+      const champGroups = map.get(skin.champion_name) ?? [];
+      const chromaInfo = lookupChromaInfo(skin.skin_name);
+      if (chromaInfo) {
+        let g = champGroups.find((g) => g.baseSkinName === chromaInfo.parentName);
+        if (!g) {
+          g = { base: null, baseSkinName: chromaInfo.parentName, chromas: [] };
+          champGroups.push(g);
+        }
+        g.chromas.push({ dl: skin, colors: chromaInfo.colors });
+      } else {
+        let g = champGroups.find((g) => g.baseSkinName === skin.skin_name);
+        if (!g) {
+          g = { base: skin, baseSkinName: skin.skin_name, chromas: [] };
+          champGroups.push(g);
+        } else {
+          g.base = skin;
+        }
+      }
+      map.set(skin.champion_name, champGroups);
+    }
+    return map;
+  }, [downloads, chromaReady]);
+
+  const filteredEntries = useMemo(() => {
+    const entries = [...grouped.entries()];
+    const query = search.trim().toLowerCase();
+    return query ? entries.filter(([champion]) => champion.toLowerCase().includes(query)) : entries;
+  }, [grouped, search]);
+
   if (downloads.length === 0) {
     return (
       <div className="flex h-full flex-col">
@@ -155,36 +191,8 @@ export default function MySkins({
     );
   }
 
-  const grouped = new Map<string, DownloadGroup[]>();
-  for (const skin of downloads) {
-    const champGroups = grouped.get(skin.champion_name) ?? [];
-    const chromaInfo = lookupChromaInfo(skin.skin_name);
-    if (chromaInfo) {
-      let g = champGroups.find((g) => g.baseSkinName === chromaInfo.parentName);
-      if (!g) {
-        g = { base: null, baseSkinName: chromaInfo.parentName, chromas: [] };
-        champGroups.push(g);
-      }
-      g.chromas.push({ dl: skin, colors: chromaInfo.colors });
-    } else {
-      let g = champGroups.find((g) => g.baseSkinName === skin.skin_name);
-      if (!g) {
-        g = { base: skin, baseSkinName: skin.skin_name, chromas: [] };
-        champGroups.push(g);
-      } else {
-        g.base = skin;
-      }
-    }
-    grouped.set(skin.champion_name, champGroups);
-  }
-
   let baseSkinCount = 0;
   for (const groups of grouped.values()) baseSkinCount += groups.length;
-
-  const query = search.trim().toLowerCase();
-  const filteredEntries = query
-    ? [...grouped.entries()].filter(([champion]) => champion.toLowerCase().includes(query))
-    : [...grouped.entries()];
 
   return (
     <div className="flex h-full flex-col">
