@@ -202,6 +202,35 @@ fn relaunch_via_osascript() {
     std::process::exit(if status.success() { 0 } else { 1 });
 }
 
+fn adopt_console_user_home() {
+    use std::process::Command;
+
+    let out = |cmd: &str, args: &[&str]| -> String {
+        Command::new(cmd)
+            .args(args)
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .unwrap_or_default()
+    };
+
+    let user = out("stat", &["-f", "%Su", "/dev/console"]).trim().to_string();
+    if user.is_empty() || user == "root" {
+        return;
+    }
+
+    let home = out("dscl", &[".", "-read", &format!("/Users/{}", user), "NFSHomeDirectory"])
+        .split_whitespace()
+        .last()
+        .unwrap_or_default()
+        .to_string();
+
+    if !home.is_empty() && std::path::Path::new(&home).is_dir() {
+        eprintln!("[zushi] App data dir: {} (owner: {})", home, user);
+        std::env::set_var("HOME", home);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // mod-tools needs root for task_for_pid on macOS.
@@ -211,6 +240,8 @@ pub fn run() {
     }
 
     eprintln!("[zushi] Running as root (euid=0)");
+
+    adopt_console_user_home();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
