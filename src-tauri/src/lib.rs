@@ -134,8 +134,10 @@ fn relaunch_as_admin() {
         let exe = std::env::current_exe().expect("failed to get executable path");
         let exe_cstr = CString::new(exe.to_string_lossy().as_bytes()).unwrap();
 
-        // NULL-terminated argument list
-        let args: [*const c_char; 1] = [ptr::null()];
+        // The root process may get HOME=/var/root, so hand it the user's home explicitly.
+        let flag = CString::new(USER_HOME_ARG).unwrap();
+        let home = CString::new(std::env::var("HOME").unwrap_or_default()).unwrap_or_default();
+        let args: [*const c_char; 3] = [flag.as_ptr(), home.as_ptr(), ptr::null()];
 
         let mut pipe: *mut c_void = ptr::null_mut();
 
@@ -202,7 +204,21 @@ fn relaunch_via_osascript() {
     std::process::exit(if status.success() { 0 } else { 1 });
 }
 
-fn adopt_console_user_home() {
+const USER_HOME_ARG: &str = "--user-home";
+const ROOT_HOME: &str = "/var/root";
+const APP_DATA_SUBDIR: &str = "Library/Application Support/com.zushi.app";
+
+fn is_user_home(home: &str) -> bool {
+    !home.is_empty() && home != ROOT_HOME && std::path::Path::new(home).is_dir()
+}
+
+fn home_from_args() -> Option<String> {
+    let mut args = std::env::args();
+    args.find(|a| a == USER_HOME_ARG)?;
+    args.next().filter(|h| is_user_home(h))
+}
+
+fn console_user_home() -> Option<String> {
     use std::process::Command;
 
     let out = |cmd: &str, args: &[&str]| -> String {
@@ -214,20 +230,54 @@ fn adopt_console_user_home() {
             .unwrap_or_default()
     };
 
-    let user = out("stat", &["-f", "%Su", "/dev/console"]).trim().to_string();
+    let user = out("/usr/bin/stat", &["-f", "%Su", "/dev/console"]).trim().to_string();
     if user.is_empty() || user == "root" {
-        return;
+        return None;
     }
 
-    let home = out("dscl", &[".", "-read", &format!("/Users/{}", user), "NFSHomeDirectory"])
+    let home = out("/usr/bin/dscl", &[".", "-read", &format!("/Users/{}", user), "NFSHomeDirectory"])
         .split_whitespace()
         .last()
         .unwrap_or_default()
         .to_string();
 
-    if !home.is_empty() && std::path::Path::new(&home).is_dir() {
-        eprintln!("[zushi] App data dir: {} (owner: {})", home, user);
-        std::env::set_var("HOME", home);
+    Some(home).filter(|h| is_user_home(h))
+}
+
+/// Point HOME at the real user's home so app_data_dir() lands somewhere the
+/// game (running as that user) can read, instead of root's private /var/root.
+fn adopt_user_home() {
+    let home = home_from_args()
+        .or_else(|| std::env::var("HOME").ok().filter(|h| is_user_home(h)))
+        .or_else(console_user_home);
+
+    match home {
+        Some(home) => {
+            eprintln!("[zushi] App data dir: {}/{}", home, APP_DATA_SUBDIR);
+            std::env::set_var("HOME", &home);
+            migrate_root_app_data(&home);
+        }
+        None => eprintln!("[zushi] No user home found, app data stays under {}", ROOT_HOME),
+    }
+}
+
+/// Earlier versions could write everything under /var/root. Move it over once
+/// so users don't have to re-download their skins.
+fn migrate_root_app_data(home: &str) {
+    use std::path::Path;
+
+    let old = Path::new(ROOT_HOME).join(APP_DATA_SUBDIR);
+    let new = Path::new(home).join(APP_DATA_SUBDIR);
+    if !old.is_dir() || new.exists() {
+        return;
+    }
+
+    if let Some(parent) = new.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    match std::fs::rename(&old, &new) {
+        Ok(()) => eprintln!("[zushi] Moved app data from {} to {}", old.display(), new.display()),
+        Err(e) => eprintln!("[zushi] Failed to move app data from {}: {}", old.display(), e),
     }
 }
 
@@ -241,7 +291,7 @@ pub fn run() {
 
     eprintln!("[zushi] Running as root (euid=0)");
 
-    adopt_console_user_home();
+    adopt_user_home();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

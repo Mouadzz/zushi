@@ -120,11 +120,9 @@ static auto mod_copy(fs::path src, fs::path dst, fs::path game, bool noTFT) -> v
     }
 
     logi("Copying META files");
+    // Recursive: newer mods ship subfolders like META/hashes/, which copy_file rejects.
     fs::create_directories(dst / "META");
-    for (auto const& dirent : fs::directory_iterator(src / "META")) {
-        auto relpath = fs::relative(dirent.path(), src);
-        fs::copy_file(src / relpath, dst / relpath, fs::copy_options::overwrite_existing);
-    }
+    fs::copy(src / "META", dst / "META", fs::copy_options::recursive | fs::copy_options::overwrite_existing);
 
     logi("Writing wads");
     fs::create_directories(dst);
