@@ -58,6 +58,8 @@ add_library(mod-tools-lib STATIC
     lib/wad/entry.hpp
     lib/wad/index.cpp
     lib/wad/index.hpp
+    lib/wad/repair.cpp
+    lib/wad/repair.hpp
     lib/wad/toc.cpp
     lib/wad/toc.hpp
 )
