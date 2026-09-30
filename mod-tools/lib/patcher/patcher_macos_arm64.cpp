@@ -6,8 +6,6 @@
 #    include <functional>
 #    include <thread>
 
-#    include <dlfcn.h>
-
 #    include "utility/delay.hpp"
 #    include "utility/macho.hpp"
 #    include "utility/process.hpp"
@@ -23,9 +21,8 @@ using namespace std::chrono_literals;
 // Fopen hook payload, allocated in target process. This is too big to fit in any code cave.
 struct Payload_fopen_hook {
     unsigned char fopen_hook[0x100] = {};
-    PtrStorage fopen_org_ptr = {};       // points to original_fopen below (for double-deref in shellcode)
+    PtrStorage fopen_org_ptr = {};  // the game's own fopen import slot, read at call time
     char prefix[0x100] = {};
-    PtrStorage original_fopen = {};      // actual resolved fopen address
 };
 
 __asm__(R"(
@@ -151,7 +148,30 @@ struct Payload_wad_verify {
         0x20, 0x00, 0x80, 0xD2, 0xC0, 0x03, 0x5F, 0xD6,
         // clang-format on
     };
-    PtrStorage fopen_hook_ptr = {};
+};
+
+// Replaces the game's fopen import stub with a jump to the hook. Written while the process is
+// suspended, so every fopen after resume goes through the hook; overwriting the import pointer after
+// resume instead races dyld's binding and can leave the hook uninstalled (game loads without skins).
+struct Payload_import_stub {
+    uint32_t adrp;  // adrp x16, <hook page>
+    uint32_t add;   // add x16, x16, <hook page offset>
+    uint32_t br;    // br x16
+
+    static Payload_import_stub create(uint64_t from, uint64_t to) {
+        const int64_t page_diff = (int64_t)((to & ~0xFFF) - (from & ~0xFFF)) >> 12;
+        if (page_diff < -0x100000 || page_diff > 0xFFFFF) {
+            throw std::runtime_error("Import stub offset too big");
+        }
+        const uint32_t imm21 = page_diff & 0x1FFFFF;
+        const uint32_t immlo = (imm21 & 0x3) << 29;
+        const uint32_t immhi = ((imm21 >> 2) & 0x7FFFF) << 5;
+        return Payload_import_stub{
+            .adrp = (uint32_t)(0x90000010 | immhi | immlo),
+            .add = (uint32_t)(0x91000210 | ((uint32_t)(to & 0xFFF) << 10)),
+            .br = (uint32_t)(0xD61F0200),
+        };
+    }
 };
 
 static PtrStorage find_wad_verify(const uint8_t* text_beg, const uint8_t* text_end, uint64_t text_addr) {
@@ -189,7 +209,7 @@ static auto patch_step(char const* what, F&& step) -> void {
 struct Context {
     std::uint64_t off_wad_verify = {};
     std::uint64_t off_fopen_ptr = {};
-    PtrStorage ptr_fopen_hook_addr = {};
+    std::uint64_t off_fopen_stub = {};
     std::string prefix;
 
     auto set_prefix(fs::path const& profile_path) -> void {
@@ -219,34 +239,28 @@ struct Context {
         if (!(off_fopen_ptr = macho.find_import_ptr("_fopen"))) {
             throw std::runtime_error("Failed to find fopen org");
         }
+        if (!(off_fopen_stub = macho.find_stub_refs(off_fopen_ptr))) {
+            throw std::runtime_error("Failed to find fopen stub");
+        }
     }
 
     auto patch(Process const& process) -> void {
         auto const ptr_fopen_hook = process.Allocate<Payload_fopen_hook>();
         auto const ptr_wad_verify = process.Rebase<Payload_wad_verify>(off_wad_verify);
-
-        // Resolve fopen via dlsym. The dyld shared cache is mapped at the same
-        // virtual address in every process on the same boot, so this address is
-        // valid inside the game process too.
-        auto real_fopen = (PtrStorage)dlsym(RTLD_DEFAULT, "fopen");
-        if (!real_fopen) {
-            throw std::runtime_error("dlsym failed to resolve fopen");
-        }
+        auto const ptr_fopen_stub = process.Rebase<Payload_import_stub>(off_fopen_stub);
 
         auto payload_fopen = Payload_fopen_hook{};
-        payload_fopen.original_fopen = real_fopen;
-        payload_fopen.fopen_org_ptr = (PtrStorage)ptr_fopen_hook + offsetof(Payload_fopen_hook, original_fopen);
+        payload_fopen.fopen_org_ptr = process.Rebase(off_fopen_ptr);
         memcpy(payload_fopen.fopen_hook, fopen_hook_shellcode_beg, sizeof(Payload_fopen_hook::fopen_hook));
         memcpy(payload_fopen.prefix, prefix.c_str(), prefix.size() + 1);
 
         auto payload_wad_verify = Payload_wad_verify{};
-        payload_wad_verify.fopen_hook_ptr = (PtrStorage)ptr_fopen_hook;
+        auto payload_import_stub = Payload_import_stub::create((PtrStorage)ptr_fopen_stub, (PtrStorage)ptr_fopen_hook);
 
         // Write shellcode to newly allocated memory (not code-signed).
         // Each step is logged on failure: without a debugger attached the
         // kernel may refuse to make memory executable in another process, and
         // the log needs to say exactly which call was rejected.
-        ptr_fopen_hook_addr = (PtrStorage)ptr_fopen_hook;
         patch_step("hook: mark writable", [&] { process.MarkWritable(ptr_fopen_hook); });
         patch_step("hook: write payload", [&] { process.Write(ptr_fopen_hook, payload_fopen); });
         patch_step("hook: mark executable", [&] { process.MarkExecutable(ptr_fopen_hook); });
@@ -255,6 +269,10 @@ struct Context {
         patch_step("wad_verify: mark writable", [&] { process.MarkWritable(ptr_wad_verify); });
         patch_step("wad_verify: write bypass", [&] { process.Write(ptr_wad_verify, payload_wad_verify); });
         patch_step("wad_verify: mark executable", [&] { process.MarkExecutable(ptr_wad_verify); });
+
+        patch_step("fopen stub: mark writable", [&] { process.MarkWritable(ptr_fopen_stub); });
+        patch_step("fopen stub: write hook", [&] { process.Write(ptr_fopen_stub, payload_import_stub); });
+        patch_step("fopen stub: mark executable", [&] { process.MarkExecutable(ptr_fopen_stub); });
     }
 };
 
@@ -326,7 +344,7 @@ auto patcher::run(std::function<void(Message, char const*)> update,
 
             update(M_PATCH, "");
 
-            // Phase 1: Freeze process, write shellcode + wad_verify bypass.
+            // Freeze the process, then write the hook, the wad_verify bypass and the fopen stub.
             //
             // Freezing is done with task_suspend rather than ptrace. League
             // denies debugger attachment within milliseconds of launching, and
@@ -343,27 +361,6 @@ auto patcher::run(std::function<void(Message, char const*)> update,
                 ctx.patch(process);
             }
             patch_log("patched pid=%u", pid);
-
-            // Phase 2: Wait for dyld to resolve fopen lazy binding, then overwrite
-            // with our hook. macOS 26 eagerly resolves lazy bindings after process
-            // resume, so we must wait for resolution before overwriting.
-            {
-                auto const ptr_fopen_ptr = process.Rebase(ctx.off_fopen_ptr);
-                auto const real_fopen = (PtrStorage)dlsym(RTLD_DEFAULT, "fopen");
-                PtrStorage current = 0;
-
-                for (int i = 0; i < 5000; i++) {
-                    if (!process.TryReadMemory((void*)(uintptr_t)ptr_fopen_ptr, &current, sizeof(current))) {
-                        break;
-                    }
-                    if (current == real_fopen) {
-                        PtrStorage hook_addr = ctx.ptr_fopen_hook_addr;
-                        process.WriteMemory((void*)(uintptr_t)ptr_fopen_ptr, &hook_addr, sizeof(hook_addr));
-                        break;
-                    }
-                    sleep_ms(1);
-                }
-            }
 
             last_patched_pid = pid;
             update(M_WAIT_EXIT, "");
