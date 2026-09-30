@@ -64,44 +64,61 @@ auto Process::Open(std::uint32_t pid) -> Process {
     lol_throw_msg("task_for_pid");
 }
 
-auto Process::Base() const -> PtrStorage {
-    if (!base_) {
-        vm_map_offset_t vmoffset = {};
+// The ASLR slide comes from the executable region backed by the game binary itself,
+// not from whichever region happens to be mapped lowest.
+static auto find_main_image_base(void* handle, std::uint32_t pid) noexcept -> std::optional<PtrStorage> {
+    char exe_path[PROC_PIDPATHINFO_MAXSIZE] = {};
+    if (proc_pidpath(pid, exe_path, sizeof(exe_path)) <= 0) {
+        return std::nullopt;
+    }
+
+    vm_map_offset_t address = 0;
+    for (int i = 0; i < 4096; i++) {
+        vm_map_offset_t vmoffset = address;
         vm_map_size_t vmsize = {};
         uint32_t nesting_depth = 0;
         struct vm_region_submap_info_64 vbr[16] = {};
         mach_msg_type_number_t vbrcount = 16;
-        kern_return_t kr;
-        if (auto const err = mach_vm_region_recurse((mach_port_t)(uintptr_t)handle_,
+        if (auto const err = mach_vm_region_recurse((mach_port_t)(uintptr_t)handle,
                                                     &vmoffset,
                                                     &vmsize,
                                                     &nesting_depth,
                                                     (vm_region_recurse_info_t)&vbr,
                                                     &vbrcount)) {
-            lol_throw_msg("mach_vm_region_recurse: {:#x}", (std::uint32_t)err);
+            return std::nullopt;  // ran out of regions
         }
-        base_ = vmoffset - 0x100000000;
+
+        // __PAGEZERO also reports the game binary as its file but has no permissions.
+        if (vbr[0].protection != VM_PROT_NONE && (vbr[0].protection & VM_PROT_EXECUTE)) {
+            char region_path[PROC_PIDPATHINFO_MAXSIZE] = {};
+            int const n = proc_regionfilename(pid, vmoffset, region_path, sizeof(region_path));
+            if (n > 0 && std::string_view{region_path, (std::size_t)n} == exe_path) {
+                return (PtrStorage)vmoffset - 0x100000000;
+            }
+        }
+
+        if (vmoffset + vmsize <= address) return std::nullopt;  // overflow guard
+        address = vmoffset + vmsize;
+    }
+    return std::nullopt;  // gave up after too many regions
+}
+
+auto Process::Base() const -> PtrStorage {
+    if (!base_) {
+        auto const found = find_main_image_base(handle_, pid_);
+        if (!found) {
+            lol_throw_msg("Failed to find main image base");
+        }
+        base_ = *found;
     }
     return base_;
 }
 
 auto Process::TryBase() const noexcept -> std::optional<PtrStorage> {
     if (!base_) {
-        vm_map_offset_t vmoffset = {};
-        vm_map_size_t vmsize = {};
-        uint32_t nesting_depth = 0;
-        struct vm_region_submap_info_64 vbr[16] = {};
-        mach_msg_type_number_t vbrcount = 16;
-        kern_return_t kr;
-        if (auto const err = mach_vm_region_recurse((mach_port_t)(uintptr_t)handle_,
-                                                    &vmoffset,
-                                                    &vmsize,
-                                                    &nesting_depth,
-                                                    (vm_region_recurse_info_t)&vbr,
-                                                    &vbrcount)) {
-            return std::nullopt;
-        }
-        base_ = vmoffset - 0x100000000;
+        auto const found = find_main_image_base(handle_, pid_);
+        if (!found) return std::nullopt;
+        base_ = *found;
     }
     return base_;
 }

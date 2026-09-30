@@ -10,6 +10,7 @@
 #include <utility/zip.hpp>
 #include <wad/archive.hpp>
 #include <wad/index.hpp>
+#include <wad/repair.hpp>
 #include <chrono>
 #include <thread>
 #include <unistd.h>
@@ -210,6 +211,10 @@ static auto mod_mkoverlay(fs::path src, fs::path dst, fs::path game, fs::names m
         if (mod_index.mounts.empty()) {
             logw("Empty mod: {}", mod_index.name);
             continue;
+        }
+
+        if (auto const repaired = wad::repair_outdated_bins(mod_index, game_index)) {
+            logi("Repaired {} outdated .bin file(s) in {}", repaired, mod_index.name);
         }
 
         // We have to resolve any conflicts inside mod itself
