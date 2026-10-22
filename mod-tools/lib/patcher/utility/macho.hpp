@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -130,6 +131,7 @@ namespace lol {
         void read_stubs(Stream const& org_stream, std::uint64_t address);
         void read_exports(Stream const& org_stream);
         void read_binding_lazy(Stream const& org_stream);
+        void read_chained_fixups(Stream const& file_stream, std::uint32_t dataoff, std::uint32_t datasize);
 
         data_t data_ = {};
         size_t size_ = {};
@@ -137,6 +139,7 @@ namespace lol {
         std::vector<SegSec> segments;
         std::unordered_map<std::string, Export> exports;
         std::unordered_map<std::string, BindingLazy> binding_lazy;
+        std::unordered_map<std::string, std::uint64_t> chained_binds;
         std::unordered_map<std::uint64_t, std::uint64_t> stub_refs;
     };
 }
@@ -242,6 +245,7 @@ namespace lol {
         segments.clear();
         exports.clear();
         binding_lazy.clear();
+        chained_binds.clear();
         stub_refs.clear();
 
         auto stream = Stream{data, size};
@@ -277,6 +281,7 @@ namespace lol {
         auto const file_stream = Stream{data, data_size};
         auto stream = file_stream.copy();
         auto const header = stream.read_raw<Header>();
+        auto chained_fixups = std::optional<std::pair<std::uint32_t, std::uint32_t>>{};
         for (auto count = header.ncmds; count; --count) {
             auto cmd_stream = stream.copy();
             auto const command = cmd_stream.read_raw<Command>();
@@ -296,7 +301,16 @@ namespace lol {
                 read_exports(file_stream.copy(info.export_off, info.export_size));
                 read_binding_lazy(file_stream.copy(info.lazy_bind_off, info.lazy_bind_size));
             }
+            if (command.cmd == 0x80000034) {  // LC_DYLD_CHAINED_FIXUPS
+                auto const dataoff = cmd_stream.read_raw<std::uint32_t>();
+                auto const datasize = cmd_stream.read_raw<std::uint32_t>();
+                chained_fixups = std::make_pair(dataoff, datasize);
+            }
             stream.skip(command.cmdsize);
+        }
+        // Segments must be known to resolve chain locations, so this runs after all load commands.
+        if (chained_fixups) {
+            read_chained_fixups(file_stream, chained_fixups->first, chained_fixups->second);
         }
     }
 
@@ -444,6 +458,91 @@ namespace lol {
         }
     }
 
+    inline void MachO::read_chained_fixups(Stream const& file_stream, std::uint32_t dataoff, std::uint32_t datasize) {
+        auto const blob = file_stream.copy(dataoff, datasize);
+        auto header = blob.copy();
+        header.skip(4);  // fixups_version
+        auto const starts_offset = header.read_raw<std::uint32_t>();
+        auto const imports_offset = header.read_raw<std::uint32_t>();
+        auto const symbols_offset = header.read_raw<std::uint32_t>();
+        auto const imports_count = header.read_raw<std::uint32_t>();
+        auto const imports_format = header.read_raw<std::uint32_t>();
+
+        auto names = std::vector<std::string>{};
+        auto imports = blob.copy(imports_offset);
+        for (auto i = 0u; i != imports_count; ++i) {
+            auto name_offset = std::uint64_t{};
+            if (imports_format == 1) {  // DYLD_CHAINED_IMPORT
+                name_offset = imports.read_raw<std::uint32_t>() >> 9;
+            } else if (imports_format == 2) {  // DYLD_CHAINED_IMPORT_ADDEND
+                name_offset = imports.read_raw<std::uint32_t>() >> 9;
+                imports.skip(4);
+            } else if (imports_format == 3) {  // DYLD_CHAINED_IMPORT_ADDEND64
+                name_offset = imports.read_raw<std::uint64_t>() >> 32;
+                imports.skip(8);
+            } else {
+                throw std::runtime_error("Unsupported chained fixups import format!");
+            }
+            names.push_back(blob.copy(symbols_offset + name_offset).read_zstring());
+        }
+
+        auto image_base = std::uint64_t{};
+        for (auto const& segment : segments) {
+            if (segment.fileoff == 0 && segment.filesize) {
+                image_base = segment.vmaddr;
+                break;
+            }
+        }
+
+        auto const starts = blob.copy(starts_offset);
+        auto starts_in_image = starts.copy();
+        auto const seg_count = starts_in_image.read_raw<std::uint32_t>();
+        for (auto seg = 0u; seg != seg_count; ++seg) {
+            auto const seg_info_offset = starts_in_image.read_raw<std::uint32_t>();
+            if (!seg_info_offset) {
+                continue;
+            }
+            auto info = starts.copy(seg_info_offset);
+            info.skip(4);  // size
+            auto const page_size = info.read_raw<std::uint16_t>();
+            auto const pointer_format = info.read_raw<std::uint16_t>();
+            auto const segment_offset = info.read_raw<std::uint64_t>();
+            info.skip(4);  // max_valid_pointer
+            auto const page_count = info.read_raw<std::uint16_t>();
+            // DYLD_CHAINED_PTR_64 and DYLD_CHAINED_PTR_64_OFFSET share the same bind layout.
+            if (pointer_format != 2 && pointer_format != 6) {
+                throw std::runtime_error("Unsupported chained fixups pointer format!");
+            }
+            for (auto page = 0u; page != page_count; ++page) {
+                auto const page_start = info.read_raw<std::uint16_t>();
+                if (page_start == 0xFFFF || (page_start & 0x8000)) {
+                    continue;
+                }
+                auto chain_offset = segment_offset + (std::uint64_t)page * page_size + page_start;
+                for (;;) {
+                    auto const address = image_base + chain_offset;
+                    auto const found = std::find_if(segments.begin(), segments.end(), [&](SegSec const& segment) {
+                        return address >= segment.vmaddr && address - segment.vmaddr < segment.filesize;
+                    });
+                    if (found == segments.end()) {
+                        throw std::runtime_error("Invalid chained fixups location: out of range!");
+                    }
+                    auto const raw = file_stream.copy(found->fileoff + (address - found->vmaddr)).read_raw<std::uint64_t>();
+                    if (raw >> 63) {
+                        if (auto const ordinal = raw & 0xFFFFFF; ordinal < names.size()) {
+                            chained_binds.try_emplace(names[ordinal], address);
+                        }
+                    }
+                    auto const next = (raw >> 51) & 0xFFF;
+                    if (!next) {
+                        break;
+                    }
+                    chain_offset += next * 4;
+                }
+            }
+        }
+    }
+
     inline std::uint64_t MachO::find_export(char const* func_name) const {
         if (auto i = exports.find(func_name); i != exports.end()) {
             if (i->second.symbol_offset) {
@@ -458,6 +557,9 @@ namespace lol {
             if (i->second.binding_type == 1) {
                 return segments.at(i->second.segment).vmaddr + i->second.address;
             }
+        }
+        if (auto i = chained_binds.find(func_name); i != chained_binds.end()) {
+            return i->second;
         }
         return {};
     }
