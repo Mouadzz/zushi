@@ -82,6 +82,27 @@ namespace lol {
             std::uint32_t strsize;
         };
 
+        struct Dysymtab {
+            std::uint32_t ilocalsym;
+            std::uint32_t nlocalsym;
+            std::uint32_t iextdefsym;
+            std::uint32_t nextdefsym;
+            std::uint32_t iundefsym;
+            std::uint32_t nundefsym;
+            std::uint32_t tocoff;
+            std::uint32_t ntoc;
+            std::uint32_t modtaboff;
+            std::uint32_t nmodtab;
+            std::uint32_t extrefsymoff;
+            std::uint32_t nextrefsyms;
+            std::uint32_t indirectsymoff;
+            std::uint32_t nindirectsyms;
+            std::uint32_t extreloff;
+            std::uint32_t nextrel;
+            std::uint32_t locreloff;
+            std::uint32_t nlocrel;
+        };
+
         struct Export {
             struct ReExport {
                 std::string name;
@@ -130,6 +151,7 @@ namespace lol {
         void read_stubs(Stream const& org_stream, std::uint64_t address);
         void read_exports(Stream const& org_stream);
         void read_binding_lazy(Stream const& org_stream);
+        void read_import_ptrs(Stream const& file_stream, Symtab const& symtab, Dysymtab const& dysymtab);
 
         data_t data_ = {};
         size_t size_ = {};
@@ -137,6 +159,7 @@ namespace lol {
         std::vector<SegSec> segments;
         std::unordered_map<std::string, Export> exports;
         std::unordered_map<std::string, BindingLazy> binding_lazy;
+        std::unordered_map<std::string, std::uint64_t> import_ptrs;
         std::unordered_map<std::uint64_t, std::uint64_t> stub_refs;
     };
 }
@@ -242,6 +265,7 @@ namespace lol {
         segments.clear();
         exports.clear();
         binding_lazy.clear();
+        import_ptrs.clear();
         stub_refs.clear();
 
         auto stream = Stream{data, size};
@@ -277,6 +301,8 @@ namespace lol {
         auto const file_stream = Stream{data, data_size};
         auto stream = file_stream.copy();
         auto const header = stream.read_raw<Header>();
+        auto symtab = std::optional<Symtab>{};
+        auto dysymtab = std::optional<Dysymtab>{};
         for (auto count = header.ncmds; count; --count) {
             auto cmd_stream = stream.copy();
             auto const command = cmd_stream.read_raw<Command>();
@@ -296,7 +322,18 @@ namespace lol {
                 read_exports(file_stream.copy(info.export_off, info.export_size));
                 read_binding_lazy(file_stream.copy(info.lazy_bind_off, info.lazy_bind_size));
             }
+            if (command.cmd == 0x2) {
+                symtab = cmd_stream.read_raw<Symtab>();
+            }
+            if (command.cmd == 0xB) {
+                dysymtab = cmd_stream.read_raw<Dysymtab>();
+            }
             stream.skip(command.cmdsize);
+        }
+        // Binaries linked with chained fixups (LoL 16.21+) have no lazy binding info, so import
+        // pointers are found through the indirect symbol table instead.
+        if (symtab && dysymtab) {
+            read_import_ptrs(file_stream, *symtab, *dysymtab);
         }
     }
 
@@ -444,6 +481,34 @@ namespace lol {
         }
     }
 
+    inline void MachO::read_import_ptrs(Stream const& file_stream, Symtab const& symtab, Dysymtab const& dysymtab) {
+        auto const symbols = file_stream.copy(symtab.symoff, symtab.nsyms * sizeof(Symbol));
+        auto const strings = file_stream.copy(symtab.stroff, symtab.strsize);
+        auto const indirect = file_stream.copy(dysymtab.indirectsymoff, dysymtab.nindirectsyms * sizeof(std::uint32_t));
+        for (const auto& segment : this->segments) {
+            for (const auto& section : segment.sections) {
+                // S_NON_LAZY_SYMBOL_POINTERS (__got) or S_LAZY_SYMBOL_POINTERS (__la_symbol_ptr)
+                auto const type = section.flags & 0xFF;
+                if (type != 0x6 && type != 0x7) {
+                    continue;
+                }
+                auto const count = section.size / sizeof(std::uint64_t);
+                auto entries = indirect.copy(section.reserved1 * sizeof(std::uint32_t), count * sizeof(std::uint32_t));
+                for (auto i = 0ull; i != count; ++i) {
+                    auto const sym_index = entries.read_raw<std::uint32_t>();
+                    // INDIRECT_SYMBOL_LOCAL / INDIRECT_SYMBOL_ABS have no name
+                    if ((sym_index & 0xC0000000u) || sym_index >= symtab.nsyms) {
+                        continue;
+                    }
+                    auto symbol_stream = symbols.copy(sym_index * sizeof(Symbol));
+                    auto const symbol = symbol_stream.read_raw<Symbol>();
+                    auto name_stream = strings.copy(symbol.n_strx);
+                    import_ptrs.try_emplace(name_stream.read_zstring(), section.addr + i * sizeof(std::uint64_t));
+                }
+            }
+        }
+    }
+
     inline std::uint64_t MachO::find_export(char const* func_name) const {
         if (auto i = exports.find(func_name); i != exports.end()) {
             if (i->second.symbol_offset) {
@@ -458,6 +523,9 @@ namespace lol {
             if (i->second.binding_type == 1) {
                 return segments.at(i->second.segment).vmaddr + i->second.address;
             }
+        }
+        if (auto i = import_ptrs.find(func_name); i != import_ptrs.end()) {
+            return i->second;
         }
         return {};
     }
