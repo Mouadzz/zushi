@@ -49,6 +49,8 @@
    ```
    Then open the app again normally.
 
+After that, Zushi updates itself: when a new version is out, click **Update & restart** in the sidebar. No new download or `xattr` needed.
+
 ## Usage
 
 1. **Start League client** - Open the Riot/League client first and leave it running.

@@ -51,19 +51,41 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check updater key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if grep -q REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY src-tauri/tauri.conf.json || [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Set plugins.updater.pubkey in src-tauri/tauri.conf.json and the TAURI_SIGNING_PRIVATE_KEY secret (npx tauri signer generate)."
+            exit 1
+          fi
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: npx tauri
           args: --target ${{ matrix.target }}
+
+      # Both targets produce Zushi.app.tar.gz, so give the updater bundle an arch-specific name.
+      - name: Collect artifacts
+        run: |
+          VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          ARCH=${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x64' }}
+          BUNDLE=src-tauri/target/${{ matrix.target }}/release/bundle
+          mkdir -p out
+          cp $BUNDLE/dmg/*.dmg out/
+          cp $BUNDLE/macos/Zushi.app.tar.gz out/Zushi_${VERSION}_${ARCH}.app.tar.gz
+          cp $BUNDLE/macos/Zushi.app.tar.gz.sig out/Zushi_${VERSION}_${ARCH}.app.tar.gz.sig
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: zushi-${{ matrix.label }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          path: out/*
 
   release:
     needs: build
@@ -82,10 +104,33 @@ jobs:
         id: version
         run: echo "version=$(jq -r .version src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
 
+      - name: Tag
+        id: tag
+        run: echo "tag=v${{ steps.version.outputs.version }}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      # The app reads releases/latest/download/latest.json to find, verify and install updates.
+      - name: Write update manifest
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          BASE=https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}
+          jq -n \
+            --arg version "$VERSION" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg arm_url "$BASE/Zushi_${VERSION}_aarch64.app.tar.gz" \
+            --arg arm_sig "$(cat artifacts/Zushi_${VERSION}_aarch64.app.tar.gz.sig)" \
+            --arg x64_url "$BASE/Zushi_${VERSION}_x64.app.tar.gz" \
+            --arg x64_sig "$(cat artifacts/Zushi_${VERSION}_x64.app.tar.gz.sig)" \
+            '{version: $version, pub_date: $date, platforms: {
+              "darwin-aarch64": {url: $arm_url, signature: $arm_sig},
+              "darwin-x86_64": {url: $x64_url, signature: $x64_sig}
+            }}' > artifacts/latest.json
+          rm artifacts/*.sig
+          cat artifacts/latest.json
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          tag_name: ${{ steps.tag.outputs.tag }}
           name: Zushi v${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
