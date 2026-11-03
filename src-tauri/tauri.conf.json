@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Zushi",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "identifier": "com.zushi.app",
   "build": {
     "frontendDist": "../dist",
@@ -48,7 +48,7 @@
       "open": true
     },
     "updater": {
-      "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY5MjI3OUJBMzA5MjBBN0YKUldSL0NwSXd1bmtpK1Q3V0x2WFN0QWx1bzlvbkx6RHdhamFqQWRjNjhFdVFnQ0w2YmNSV1ZVeW8K",
       "endpoints": [
         "https://github.com/Mouadzz/zushi/releases/latest/download/latest.json"
       ]
