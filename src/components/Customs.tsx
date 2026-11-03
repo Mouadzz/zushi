@@ -41,6 +41,7 @@ export default function Customs({
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let disposed = false;
 
     getCurrentWebviewWindow()
       .onDragDropEvent((event) => {
@@ -51,7 +52,7 @@ export default function Customs({
           const paths = (event.payload as { type: "drop"; paths: string[] }).paths;
           const zips = paths.filter((p) => {
             const lower = p.toLowerCase();
-            return lower.endsWith(".zip") || lower.endsWith(".fantome");
+            return lower.endsWith(".zip") || lower.endsWith(".fantome") || lower.endsWith(".modpkg");
           });
           zips.forEach(handleAdd);
         } else if (type === "leave") {
@@ -61,10 +62,14 @@ export default function Customs({
         }
       })
       .then((fn) => {
-        unlisten = fn;
+        // Cleanup can run before the listener is registered; drop it right away then,
+        // otherwise a second listener stays alive and every drop imports twice.
+        if (disposed) fn();
+        else unlisten = fn;
       });
 
     return () => {
+      disposed = true;
       unlisten?.();
     };
   }, [handleAdd, patcherActive]);
@@ -73,7 +78,7 @@ export default function Customs({
     if (patcherActive) return;
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Mod", extensions: ["zip", "fantome"] }],
+      filters: [{ name: "Mod", extensions: ["zip", "fantome", "modpkg"] }],
     });
     if (!selected) return;
     const paths = Array.isArray(selected) ? selected : [selected];

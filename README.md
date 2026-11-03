@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/platform-macOS-black" alt="Platform" />
   <img src="https://img.shields.io/badge/tauri-2-24C8D8" alt="Tauri" />
   <img src="https://img.shields.io/badge/react-19-61DAFB" alt="React" />
-  <img src="https://img.shields.io/badge/version-0.1.16-c89b3c" alt="Version" />
+  <img src="https://img.shields.io/badge/version-0.1.17-c89b3c" alt="Version" />
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@
 - Browse all champions and their skins with splash art previews
 - Download individual skins or batch download all skins for a champion
 - Select and apply multiple skins at once - one per champion
-- Import custom mods (.fantome/.zip)
+- Import custom mods (.fantome/.zip/.modpkg)
 - Real-time patcher status (importing, waiting for game, skins active, etc.)
 - Game auto-detection - finds your League installation automatically
 - Storage management - clear downloaded skins and patcher data

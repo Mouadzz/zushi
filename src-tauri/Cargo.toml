@@ -1,6 +1,6 @@
 [package]
 name = "zushi"
-version = "0.1.16"
+version = "0.1.17"
 description = "A lightweight desktop app to browse and apply League of Legends skins."
 authors = ["you"]
 license = "GPL-3.0"
@@ -24,3 +24,4 @@ tauri-plugin-autostart = "2"
 ureq = "2"
 libc = "0.2"
 tauri-plugin-updater = "2"
+ltk_modpkg = "0.12"

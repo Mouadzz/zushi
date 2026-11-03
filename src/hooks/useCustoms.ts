@@ -43,7 +43,7 @@ export function useCustoms() {
   const addCustom = useCallback(
     async (srcPath: string) => {
       const fileName = srcPath.split("/").pop() ?? srcPath;
-      const name = fileName.replace(/\.(zip|fantome)$/i, "");
+      const name = fileName.replace(/\.(zip|fantome|modpkg)$/i, "");
       setError(null);
       const entry = await importCustom(srcPath, name);
       // Auto-enable on add
