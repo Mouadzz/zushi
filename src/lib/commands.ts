@@ -90,3 +90,11 @@ export async function clearAllCustoms(): Promise<void> {
 export async function getCustomsDirSize(): Promise<number> {
   return invoke("get_customs_dir_size");
 }
+
+export async function checkForUpdate(): Promise<{ version: string; notes: string | null } | null> {
+  return invoke("check_for_update");
+}
+
+export async function installUpdate(): Promise<void> {
+  return invoke("install_update");
+}

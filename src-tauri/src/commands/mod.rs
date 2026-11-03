@@ -2,6 +2,7 @@ pub mod customs;
 pub mod game_path;
 pub mod patcher;
 pub mod skins;
+pub mod updater;
 
 use std::fs;
 use std::process::Command;

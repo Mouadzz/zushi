@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/platform-macOS-black" alt="Platform" />
   <img src="https://img.shields.io/badge/tauri-2-24C8D8" alt="Tauri" />
   <img src="https://img.shields.io/badge/react-19-61DAFB" alt="React" />
-  <img src="https://img.shields.io/badge/version-0.1.15-c89b3c" alt="Version" />
+  <img src="https://img.shields.io/badge/version-0.1.16-c89b3c" alt="Version" />
 </p>
 
 <p align="center">
@@ -48,6 +48,8 @@
    xattr -cr /Applications/Zushi.app
    ```
    Then open the app again normally.
+
+After that, Zushi updates itself: when a new version is out, click **Update & restart** in the sidebar. No new download or `xattr` needed.
 
 ## Usage
 

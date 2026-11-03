@@ -296,6 +296,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -323,6 +324,8 @@ pub fn run() {
             commands::customs::remove_custom,
             commands::customs::clear_all_customs,
             commands::customs::get_customs_dir_size,
+            commands::updater::check_for_update,
+            commands::updater::install_update,
             commands::open_url,
         ])
         .run(tauri::generate_context!())

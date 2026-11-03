@@ -213,7 +213,14 @@ function App() {
           </button>
 
           {update.updateAvailable && update.latestVersion ? (
-            <UpdateBanner version={update.latestVersion} releasesUrl={update.releasesUrl} />
+            <UpdateBanner
+              version={update.latestVersion}
+              releasesUrl={update.releasesUrl}
+              canInstall={update.canInstall}
+              installing={update.installing}
+              error={update.error}
+              onInstall={update.install}
+            />
           ) : (
             <div className="px-4 pb-4 select-none">
               <span className="text-ink-muted text-xs">{appVersion ? `v${appVersion}` : ""}</span>
