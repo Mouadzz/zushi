@@ -60,6 +60,8 @@ add_library(mod-tools-lib STATIC
     lib/wad/index.hpp
     lib/wad/repair.cpp
     lib/wad/repair.hpp
+    lib/wad/skin_sounds.cpp
+    lib/wad/skin_sounds.hpp
     lib/wad/toc.cpp
     lib/wad/toc.hpp
 )

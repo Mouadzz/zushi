@@ -11,6 +11,7 @@
 #include <wad/archive.hpp>
 #include <wad/index.hpp>
 #include <wad/repair.hpp>
+#include <wad/skin_sounds.hpp>
 #include <chrono>
 #include <thread>
 #include <unistd.h>
@@ -216,6 +217,10 @@ static auto mod_mkoverlay(fs::path src, fs::path dst, fs::path game, fs::names m
         if (auto const repaired = wad::repair_outdated_bins(mod_index, game_index)) {
             logi("Repaired {} outdated .bin file(s) in {}", repaired, mod_index.name);
         }
+
+        // Rose-packaged skins (LeagueSkins 16.23+) don't ship the game's own sound banks, only a list
+        // of them to copy from the player's game WADs. Without this they play with no sound.
+        wad::add_skin_sounds(mod_index, src / mod_name, game_index, game);
 
         // We have to resolve any conflicts inside mod itself
         mod_index.resolve_conflicts(mod_index, ignoreConflict);
